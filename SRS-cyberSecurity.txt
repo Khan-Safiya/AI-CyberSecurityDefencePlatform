@@ -1,0 +1,1652 @@
+# SOFTWARE REQUIREMENTS SPECIFICATION
+# Multi-Agent Cyber Defence Simulation Platform
+# Java Spring Boot Microservices Production-Grade System
+
+You are building a production-grade Multi-Agent Cyber Defence Simulation Platform.
+
+The system must be implemented using Java 21+, Spring Boot, Spring Cloud-style microservice architecture, PostgreSQL, Redis, Kafka or RabbitMQ, Docker, Docker Compose, OpenAPI, Micrometer, Prometheus, Grafana, JUnit 5, Testcontainers, and Maven or Gradle.
+
+The platform must simulate a safe, controlled cyber defence environment with two teams:
+
+1. Red Team
+   - Performs safe, scoped, non-destructive, simulated security testing.
+   - Can test built-in vulnerable sandbox services.
+   - Can test verified third-party staging targets only when explicitly registered and authorized.
+   - Must never attack real external systems without registration and verification.
+   - Must never execute real malware, destructive payloads, credential theft, persistence, or arbitrary system commands.
+
+2. Blue Team
+   - Detects findings.
+   - Prioritizes vulnerabilities.
+   - Applies remediation.
+   - Verifies fixes.
+   - Improves defensive rules.
+   - Participates in an iterative loop until the target reaches an acceptable security state.
+
+The final system must run locally using:
+
+docker compose up --build
+
+It must seed a demo scenario and allow a complete end-to-end simulation.
+
+==================================================
+1. EXECUTIVE SUMMARY
+==================================================
+
+Build a cyber defence simulation platform that behaves like a controlled cyber range and continuous security validation system.
+
+The system must support:
+
+- Internal sandbox simulations.
+- External staging target assessment.
+- Multi-agent red-team and blue-team workflows.
+- Iterative attack, detect, patch, verify, and retest loops.
+- Agent orchestration.
+- Vulnerability lifecycle management.
+- Detection engineering.
+- Remediation workflows.
+- Scoring.
+- Audit logging.
+- Event-driven architecture.
+- Dashboard-ready APIs.
+- Safe, policy-controlled execution.
+- Production-grade observability, security, testing, and deployment.
+
+The system must be designed as a monorepo containing multiple Spring Boot microservices.
+
+==================================================
+2. PRIMARY GOALS
+==================================================
+
+The platform must:
+
+1. Simulate cyber defence exercises safely.
+2. Provide a built-in intentionally vulnerable sandbox target.
+3. Allow approved external staging applications to be tested.
+4. Coordinate red-team and blue-team agents.
+5. Run iterative security validation rounds.
+6. Track vulnerabilities from discovery to verification.
+7. Generate detections from logs, telemetry, and attack actions.
+8. Apply safe remediation actions.
+9. Verify whether remediation worked.
+10. Score both teams.
+11. Provide dashboard APIs.
+12. Maintain a complete immutable event timeline.
+13. Enforce strict safety boundaries.
+14. Be production-grade, testable, documented, and observable.
+
+==================================================
+3. NON-GOALS AND SAFETY LIMITS
+==================================================
+
+The platform must not:
+
+- Attack arbitrary public internet targets.
+- Perform unrestricted network scanning.
+- Execute shell commands from agents.
+- Run real exploit payloads.
+- Create malware.
+- Deploy persistence mechanisms.
+- Steal credentials.
+- Exfiltrate data.
+- Destroy data.
+- Bypass real authentication systems.
+- Perform denial-of-service attacks.
+- Attempt privilege escalation on the host machine.
+- Access systems outside explicitly registered and verified scope.
+
+All red-team behavior must be:
+
+- Safe.
+- Non-destructive.
+- Auditable.
+- Scoped.
+- Rate-limited.
+- Policy-controlled.
+- Restricted to sandbox or verified staging targets.
+
+==================================================
+4. SYSTEM MODES
+==================================================
+
+The platform must support three target modes.
+
+--------------------------------------------------
+4.1 INTERNAL_SANDBOX
+--------------------------------------------------
+
+This mode uses the built-in target-system-service.
+
+It contains intentionally vulnerable demo endpoints.
+
+It is used for local demos, training, automated tests, and safe experiments.
+
+--------------------------------------------------
+4.2 EXTERNAL_STAGING_TARGET
+--------------------------------------------------
+
+This mode allows a user to register their own staging or test environment.
+
+Rules:
+
+- The target must be verified before assessment.
+- The owner must confirm written authorization.
+- The platform must enforce allowed hosts.
+- The platform must enforce allowed paths.
+- The platform must enforce excluded paths.
+- The platform must enforce allowed HTTP methods.
+- The platform must enforce request rate limits.
+- The platform must block production targets by default.
+- The platform must log every action.
+
+--------------------------------------------------
+4.3 AGENT_API_MODE
+--------------------------------------------------
+
+This mode allows external platforms to integrate through APIs and webhooks.
+
+External platforms can:
+
+- Register targets.
+- Start assessments.
+- Receive findings.
+- Update remediation status.
+- Receive webhook notifications.
+- Fetch final assessment reports.
+
+==================================================
+5. HIGH-LEVEL ARCHITECTURE
+==================================================
+
+Use a microservice architecture.
+
+Required services:
+
+1. api-gateway-service
+2. identity-service
+3. target-registry-service
+4. simulation-orchestrator-service
+5. agent-orchestrator-service
+6. red-team-agent-service
+7. blue-team-agent-service
+8. target-system-service
+9. vulnerability-registry-service
+10. detection-engine-service
+11. remediation-service
+12. verification-service
+13. scoring-service
+14. event-log-service
+15. notification-service
+16. dashboard-backend-service
+17. reporting-service
+18. policy-engine-service
+
+Each service must:
+
+- Be independently runnable.
+- Have its own package namespace.
+- Own its own database schema.
+- Expose OpenAPI documentation.
+- Have unit and integration tests.
+- Use structured JSON logging.
+- Emit metrics.
+- Use correlation IDs.
+- Be containerized.
+- Be included in docker-compose.yml.
+
+==================================================
+6. MONOREPO STRUCTURE
+==================================================
+
+Create this structure:
+
+cyber-defence-sim/
+  README.md
+  pom.xml or build.gradle
+  .env.example
+  docker-compose.yml
+
+  services/
+    api-gateway-service/
+    identity-service/
+    target-registry-service/
+    simulation-orchestrator-service/
+    agent-orchestrator-service/
+    red-team-agent-service/
+    blue-team-agent-service/
+    target-system-service/
+    vulnerability-registry-service/
+    detection-engine-service/
+    remediation-service/
+    verification-service/
+    scoring-service/
+    event-log-service/
+    notification-service/
+    dashboard-backend-service/
+    reporting-service/
+    policy-engine-service/
+
+  shared/
+    common-dto/
+    common-events/
+    common-security/
+    common-observability/
+    common-exceptions/
+    common-validation/
+    common-test/
+
+  infrastructure/
+    postgres/
+    redis/
+    kafka/
+    prometheus/
+    grafana/
+    nginx/
+    init-scripts/
+
+  docs/
+    architecture.md
+    api.md
+    security-boundaries.md
+    external-targets.md
+    simulation-flow.md
+    agent-framework.md
+    local-development.md
+    deployment.md
+    testing.md
+
+  scripts/
+    start-local.sh
+    stop-local.sh
+    seed-demo-scenario.sh
+    run-e2e-tests.sh
+
+==================================================
+7. TECHNOLOGY REQUIREMENTS
+==================================================
+
+Use:
+
+- Java 21+
+- Spring Boot
+- Spring Web
+- Spring Security
+- Spring Data JPA
+- Spring Validation
+- Spring Actuator
+- PostgreSQL
+- Redis
+- Kafka or RabbitMQ
+- Flyway or Liquibase
+- Docker
+- Docker Compose
+- OpenAPI / Swagger
+- Micrometer
+- Prometheus
+- Grafana
+- JUnit 5
+- Mockito
+- Testcontainers
+- Maven or Gradle
+- MapStruct or manual DTO mapping
+- Lombok optional, but prefer explicit code if clarity is better
+
+==================================================
+8. AUTHENTICATION AND AUTHORIZATION
+==================================================
+
+Implement JWT-based authentication.
+
+Roles:
+
+- ADMIN
+- SIMULATION_OPERATOR
+- RED_TEAM_VIEWER
+- BLUE_TEAM_VIEWER
+- TARGET_OWNER
+- AUDITOR
+- SERVICE_ACCOUNT
+
+Authorization rules:
+
+- ADMIN can manage users, policies, and all simulations.
+- SIMULATION_OPERATOR can create and run simulations.
+- TARGET_OWNER can register and manage their own targets.
+- RED_TEAM_VIEWER can view red-team events but cannot trigger unsafe actions.
+- BLUE_TEAM_VIEWER can view defensive findings and remediations.
+- AUDITOR can view read-only audit logs.
+- SERVICE_ACCOUNT is used for internal service-to-service calls.
+
+Use secure password hashing with BCrypt or Argon2.
+
+No hardcoded secrets.
+
+All secrets must come from environment variables.
+
+==================================================
+9. SAFETY AND POLICY ENGINE
+==================================================
+
+Create policy-engine-service.
+
+Responsibilities:
+
+- Validate whether a red-team action is allowed.
+- Validate target scope.
+- Validate rate limits.
+- Validate allowed hosts.
+- Validate allowed paths.
+- Validate HTTP methods.
+- Block production targets by default.
+- Detect unsafe agent behavior.
+- Publish unsafe.action.blocked events.
+- Provide policy decisions to other services.
+
+PolicyDecision fields:
+
+- decisionId
+- simulationId
+- targetId
+- agentId
+- actionType
+- allowed
+- reason
+- evaluatedAt
+- policyVersion
+
+Required API:
+
+POST /policies/evaluate-action
+GET /policies
+POST /policies
+PATCH /policies/{id}
+GET /policies/{id}
+
+Default deny behavior:
+
+If the policy engine is unavailable or unsure, the action must be denied.
+
+==================================================
+10. TARGET REGISTRATION
+==================================================
+
+Create target-registry-service.
+
+It must support internal and external targets.
+
+Target entity:
+
+- id
+- ownerUserId
+- name
+- description
+- mode: INTERNAL_SANDBOX, EXTERNAL_STAGING_TARGET, AGENT_API_MODE
+- baseUrl
+- environmentType: SANDBOX, STAGING, PRODUCTION_BLOCKED
+- authType: NONE, API_KEY, OAUTH2_CLIENT_CREDENTIALS, BASIC_FOR_TEST_ONLY
+- authSecretRef
+- allowedHosts
+- allowedPaths
+- excludedPaths
+- allowedHttpMethods
+- maxRequestsPerMinute
+- maxAssessmentDurationMinutes
+- callbackWebhookUrl
+- writtenAuthorizationConfirmed
+- ownershipVerificationStatus: PENDING, VERIFIED, FAILED
+- status: PENDING_VERIFICATION, ACTIVE, DISABLED
+- createdAt
+- updatedAt
+
+Required APIs:
+
+POST /targets
+GET /targets
+GET /targets/{id}
+PATCH /targets/{id}
+POST /targets/{id}/verify-ownership
+POST /targets/{id}/disable
+POST /targets/{id}/enable
+
+Ownership verification:
+
+Support at least one safe verification method:
+
+- HTTP well-known token check:
+  GET {baseUrl}/.well-known/cybersim-verification.txt
+
+The file must contain a generated verification token.
+
+The target is ACTIVE only after verification succeeds.
+
+==================================================
+11. EXTERNAL PLATFORM INTEGRATION
+==================================================
+
+External systems must integrate through stable REST APIs.
+
+Required APIs:
+
+POST /integration/targets
+GET /integration/targets
+GET /integration/targets/{id}
+POST /integration/targets/{id}/verify-ownership
+POST /integration/targets/{id}/start-assessment
+GET /integration/assessments/{id}
+GET /integration/assessments/{id}/findings
+POST /integration/findings/{id}/remediation-status
+POST /integration/assessments/{id}/stop
+
+Webhook events:
+
+- assessment.started
+- vulnerability.discovered
+- detection.created
+- remediation.recommended
+- remediation.applied
+- remediation.verified
+- assessment.completed
+- assessment.failed
+
+Webhook delivery requirements:
+
+- Sign webhook payloads.
+- Retry failed deliveries.
+- Store delivery attempts.
+- Provide webhook delivery logs.
+- Do not include sensitive secrets in webhook payloads.
+
+==================================================
+12. SIMULATION MODEL
+==================================================
+
+Simulation entity:
+
+- id
+- name
+- description
+- mode
+- targetId
+- scenarioId
+- status: CREATED, RUNNING, PAUSED, COMPLETED, FAILED, CANCELLED
+- currentRound
+- maxRounds
+- maxDurationMinutes
+- stopWhenNoNewFindingsForRounds
+- minimumAcceptedRiskLevel
+- retestEnabled
+- retestDelaySeconds
+- startedAt
+- endedAt
+- createdBy
+- redTeamScore
+- blueTeamScore
+- finalRiskScore
+
+Scenario entity:
+
+- id
+- name
+- description
+- difficulty: EASY, MEDIUM, HARD, EXPERT
+- supportedTargetModes
+- allowedVulnerabilityTypes
+- scoringRules
+- defaultMaxRounds
+- defaultMaxDurationMinutes
+- createdAt
+- updatedAt
+
+SimulationRound entity:
+
+- id
+- simulationId
+- roundNumber
+- status: CREATED, RED_TEAM_RUNNING, BLUE_TEAM_RUNNING, VERIFYING, COMPLETED, FAILED
+- startedAt
+- endedAt
+- newFindingsCount
+- remediatedFindingsCount
+- verifiedFixesCount
+- riskScoreBefore
+- riskScoreAfter
+
+==================================================
+13. ITERATIVE SIMULATION ENGINE
+==================================================
+
+The simulation must run in iterative rounds.
+
+Each round:
+
+1. Red team performs scoped testing.
+2. Findings are created.
+3. Detection engine creates detection events.
+4. Blue team analyzes findings.
+5. Blue team proposes remediation.
+6. Remediation service applies fixes when possible.
+7. Verification service validates fixes.
+8. Red team retests.
+9. Scoring service updates scores.
+10. Event-log-service records the timeline.
+
+Stopping conditions:
+
+- No new vulnerabilities found for N consecutive rounds.
+- All critical and high vulnerabilities are fixed.
+- Maximum rounds reached.
+- Maximum duration reached.
+- Manual stop requested.
+- Unsafe action detected.
+- Target becomes unavailable.
+- Policy violation occurs.
+
+Configurable fields:
+
+- maxRounds
+- maxDurationMinutes
+- stopWhenNoNewFindingsForRounds
+- minimumAcceptedRiskLevel
+- retestEnabled
+- retestDelaySeconds
+
+The orchestrator must never allow an infinite loop.
+
+==================================================
+14. AGENT FRAMEWORK
+==================================================
+
+Create an agent framework that supports multiple agent types.
+
+Agent entity:
+
+- id
+- simulationId
+- team: RED, BLUE
+- name
+- type
+- role
+- status: IDLE, RUNNING, BLOCKED, COMPLETED, FAILED
+- strategyProfile
+- createdAt
+- updatedAt
+
+AgentAction entity:
+
+- id
+- simulationId
+- roundId
+- agentId
+- team
+- actionType
+- targetId
+- status: PLANNED, APPROVED, BLOCKED, RUNNING, COMPLETED, FAILED
+- startedAt
+- completedAt
+- summary
+- metadata
+
+Agent contract:
+
+Every agent must implement:
+
+- planActions(context)
+- requestPolicyApproval(action)
+- executeApprovedAction(action)
+- publishResult(result)
+- stop()
+
+No agent may execute an action without policy approval.
+
+==================================================
+15. RED TEAM AGENTS
+==================================================
+
+Create red-team-agent-service.
+
+Required red-team agents:
+
+1. ReconAgent
+   - Performs safe endpoint discovery only within allowed scope.
+
+2. AuthTestingAgent
+   - Checks for missing authentication on known allowed endpoints.
+
+3. AccessControlTestingAgent
+   - Checks for object-level authorization issues using mock users or provided test accounts.
+
+4. InputValidationTestingAgent
+   - Performs harmless validation checks.
+
+5. RateLimitTestingAgent
+   - Performs safe, low-volume rate-limit checks within configured limits.
+
+6. ConfigurationReviewAgent
+   - Checks for exposed mock debug/config metadata.
+
+7. DependencyRiskAgent
+   - Checks declared dependency metadata for simulated known-risk versions.
+
+Allowed red-team action types:
+
+- SIMULATED_ENDPOINT_DISCOVERY
+- SIMULATED_AUTH_REQUIRED_CHECK
+- SIMULATED_ACCESS_CONTROL_CHECK
+- SIMULATED_INPUT_VALIDATION_CHECK
+- SIMULATED_RATE_LIMIT_CHECK
+- SIMULATED_CONFIG_EXPOSURE_CHECK
+- SIMULATED_DEPENDENCY_RISK_CHECK
+
+Red team must not implement destructive or real exploit logic.
+
+==================================================
+16. BLUE TEAM AGENTS
+==================================================
+
+Create blue-team-agent-service.
+
+Required blue-team agents:
+
+1. TriageAgent
+   - Prioritizes findings.
+
+2. DetectionRuleAgent
+   - Creates or updates detection rules.
+
+3. PatchRecommendationAgent
+   - Recommends remediation.
+
+4. PatchAgent
+   - Applies approved patches through remediation-service.
+
+5. ConfigHardeningAgent
+   - Fixes insecure configuration.
+
+6. VerificationAgent
+   - Requests verification from verification-service.
+
+7. IncidentResponseAgent
+   - Creates incident records and timeline summaries.
+
+Allowed blue-team action types:
+
+- TRIAGE_FINDING
+- CREATE_DETECTION_RULE
+- UPDATE_DETECTION_RULE
+- RECOMMEND_REMEDIATION
+- APPLY_REMEDIATION
+- VERIFY_REMEDIATION
+- HARDEN_CONFIGURATION
+- CREATE_INCIDENT_SUMMARY
+
+==================================================
+17. TARGET SYSTEM SERVICE
+==================================================
+
+Create target-system-service.
+
+This is the built-in intentionally vulnerable sandbox target.
+
+Mock modules:
+
+- demo-user-module
+- demo-billing-module
+- demo-document-module
+- demo-admin-module
+- demo-config-module
+
+Demo vulnerable endpoints:
+
+- /demo/admin/report
+- /demo/users/{id}/documents
+- /demo/login
+- /demo/debug/config
+- /demo/billing/search
+- /demo/dependencies
+
+Default vulnerabilities:
+
+1. Missing authentication on /demo/admin/report
+2. Missing object-level authorization on /demo/users/{id}/documents
+3. Missing rate limit on /demo/login
+4. Exposed mock debug endpoint /demo/debug/config
+5. Missing input validation on /demo/billing/search
+6. Simulated outdated dependency metadata on /demo/dependencies
+
+Internal remediation endpoints:
+
+POST /internal/patches/auth-required
+POST /internal/patches/object-authorization
+POST /internal/patches/input-validation
+POST /internal/patches/rate-limit
+POST /internal/patches/disable-debug-endpoint
+POST /internal/patches/secure-config
+POST /internal/patches/update-dependency-metadata
+
+These internal endpoints must require service-to-service authentication.
+
+==================================================
+18. VULNERABILITY REGISTRY
+==================================================
+
+Create vulnerability-registry-service.
+
+Vulnerability entity:
+
+- id
+- simulationId
+- roundId
+- targetId
+- title
+- description
+- type
+- severity: INFO, LOW, MEDIUM, HIGH, CRITICAL
+- status: OPEN, DETECTED, TRIAGED, REMEDIATION_PROPOSED, PATCH_IN_PROGRESS, MITIGATED, VERIFIED, ACCEPTED_RISK, FALSE_POSITIVE
+- evidenceSummary
+- safeReproductionSteps
+- affectedEndpoint
+- expectedFix
+- discoveredByAgentId
+- assignedBlueAgentId
+- createdAt
+- updatedAt
+- resolvedAt
+
+Required APIs:
+
+POST /vulnerabilities
+GET /vulnerabilities
+GET /vulnerabilities/{id}
+PATCH /vulnerabilities/{id}/status
+GET /simulations/{id}/vulnerabilities
+GET /targets/{id}/vulnerabilities
+
+==================================================
+19. DETECTION ENGINE
+==================================================
+
+Create detection-engine-service.
+
+Responsibilities:
+
+- Consume telemetry.
+- Consume red-team action events.
+- Correlate events.
+- Generate detection events.
+- Manage detection rules.
+- Support rule-based detection.
+
+DetectionRule entity:
+
+- id
+- name
+- description
+- eventPattern
+- severity
+- enabled
+- createdAt
+- updatedAt
+
+DetectionEvent entity:
+
+- id
+- simulationId
+- roundId
+- targetId
+- source
+- eventType
+- severity
+- message
+- relatedActionId
+- relatedVulnerabilityId
+- metadata
+- createdAt
+
+Required APIs:
+
+POST /detection-rules
+GET /detection-rules
+GET /detection-rules/{id}
+PATCH /detection-rules/{id}
+DELETE /detection-rules/{id}
+GET /simulations/{id}/detections
+
+Example detections:
+
+- Repeated login testing within allowed simulation scope.
+- Access-control test observed.
+- Input-validation check observed.
+- Debug endpoint accessed.
+- Dependency-risk check performed.
+- Unsafe action blocked.
+
+==================================================
+20. REMEDIATION SERVICE
+==================================================
+
+Create remediation-service.
+
+Responsibilities:
+
+- Receive remediation proposals.
+- Apply approved patches.
+- Call target-system-service internal patch APIs.
+- Track remediation lifecycle.
+- Support rollback where applicable.
+- Publish remediation events.
+
+RemediationAction entity:
+
+- id
+- simulationId
+- roundId
+- vulnerabilityId
+- agentId
+- targetId
+- remediationType
+- patchSummary
+- status: PROPOSED, APPROVED, APPLIED, VERIFIED, FAILED, ROLLED_BACK
+- createdAt
+- appliedAt
+- verifiedAt
+
+Required APIs:
+
+POST /remediations
+GET /remediations/{id}
+GET /simulations/{id}/remediations
+POST /remediations/{id}/approve
+POST /remediations/{id}/apply
+POST /remediations/{id}/rollback
+
+==================================================
+21. VERIFICATION SERVICE
+==================================================
+
+Create verification-service.
+
+Responsibilities:
+
+- Verify whether a remediation fixed the finding.
+- Run safe verification checks.
+- Trigger red-team retest when configured.
+- Update vulnerability status.
+- Publish remediation.verified or remediation.failed events.
+
+VerificationResult entity:
+
+- id
+- simulationId
+- roundId
+- vulnerabilityId
+- remediationId
+- targetId
+- status: PASSED, FAILED, INCONCLUSIVE
+- evidenceSummary
+- verifiedAt
+
+Required APIs:
+
+POST /verifications
+GET /verifications/{id}
+GET /simulations/{id}/verifications
+
+==================================================
+22. SCORING SERVICE
+==================================================
+
+Create scoring-service.
+
+Responsibilities:
+
+- Track team scores.
+- Award red-team points for valid findings.
+- Award blue-team points for detection, remediation, and verification.
+- Penalize duplicate, false-positive, unsafe, or failed actions.
+- Compute final risk score.
+
+ScoreEvent entity:
+
+- id
+- simulationId
+- roundId
+- team: RED, BLUE
+- points
+- reason
+- createdAt
+
+Example scoring:
+
+Red team:
+- Low severity finding: +10
+- Medium severity finding: +25
+- High severity finding: +50
+- Critical severity finding: +100
+- Duplicate finding: -5
+- Unsafe action: -100 and block agent
+
+Blue team:
+- Valid detection: +20
+- Correct triage: +20
+- Valid remediation proposal: +25
+- Patch applied: +40
+- Fix verified: +30
+- False positive: -10
+- Failed patch: -15
+
+Required APIs:
+
+GET /simulations/{id}/scores
+GET /simulations/{id}/score-events
+POST /internal/score-events
+
+==================================================
+23. EVENT LOG SERVICE
+==================================================
+
+Create event-log-service.
+
+Responsibilities:
+
+- Store immutable events.
+- Provide timeline queries.
+- Provide audit log queries.
+- Support replay for debugging.
+- Store all simulation, agent, vulnerability, detection, remediation, scoring, and policy events.
+
+Event fields:
+
+- eventId
+- eventType
+- simulationId
+- roundId
+- targetId
+- producerService
+- correlationId
+- timestamp
+- payload
+
+Required APIs:
+
+POST /events
+GET /simulations/{id}/events
+GET /simulations/{id}/timeline
+GET /audit-logs
+
+==================================================
+24. EVENT-DRIVEN ARCHITECTURE
+==================================================
+
+Use Kafka or RabbitMQ.
+
+Required topics or queues:
+
+- simulation.created
+- simulation.started
+- simulation.paused
+- simulation.completed
+- simulation.failed
+- simulation.round.started
+- simulation.round.completed
+- agent.started
+- agent.completed
+- agent.failed
+- action.planned
+- action.policy.approved
+- action.policy.denied
+- attack.started
+- attack.completed
+- vulnerability.discovered
+- vulnerability.status.changed
+- detection.created
+- remediation.proposed
+- remediation.approved
+- remediation.applied
+- remediation.verified
+- remediation.failed
+- verification.completed
+- score.updated
+- unsafe.action.blocked
+- audit.created
+- webhook.delivery.requested
+
+All events must include:
+
+- eventId
+- eventType
+- simulationId
+- timestamp
+- producerService
+- correlationId
+- payload
+
+Event handling must be idempotent.
+
+Implement retry and dead-letter queues.
+
+==================================================
+25. API GATEWAY SERVICE
+==================================================
+
+Create api-gateway-service.
+
+Responsibilities:
+
+- Single external entry point.
+- Route requests to internal services.
+- Validate JWTs.
+- Apply rate limiting.
+- Add correlation IDs.
+- Enforce CORS.
+- Expose unified route structure.
+
+External route groups:
+
+/api/auth/**
+/api/users/**
+/api/targets/**
+/api/simulations/**
+/api/scenarios/**
+/api/agents/**
+/api/vulnerabilities/**
+/api/detections/**
+/api/remediations/**
+/api/verifications/**
+/api/scores/**
+/api/events/**
+/api/dashboard/**
+/api/reports/**
+/api/integration/**
+
+==================================================
+26. DASHBOARD BACKEND
+==================================================
+
+Create dashboard-backend-service.
+
+Responsibilities:
+
+- Provide dashboard-ready aggregated data.
+- Return simulation overview.
+- Return live scores.
+- Return vulnerability status.
+- Return agent status.
+- Return round progress.
+- Return event timeline.
+- Return remediation progress.
+
+Required APIs:
+
+GET /dashboard/simulations/{id}/overview
+GET /dashboard/simulations/{id}/agents
+GET /dashboard/simulations/{id}/rounds
+GET /dashboard/simulations/{id}/scores
+GET /dashboard/simulations/{id}/vulnerabilities
+GET /dashboard/simulations/{id}/detections
+GET /dashboard/simulations/{id}/remediations
+GET /dashboard/simulations/{id}/timeline
+
+==================================================
+27. REPORTING SERVICE
+==================================================
+
+Create reporting-service.
+
+Responsibilities:
+
+- Generate final assessment reports.
+- Summarize findings.
+- Summarize remediation status.
+- Summarize score.
+- Summarize timeline.
+- Export JSON report.
+- Export PDF report if feasible.
+
+Report sections:
+
+- Executive summary
+- Target details
+- Simulation configuration
+- Red-team activity summary
+- Blue-team activity summary
+- Vulnerability list
+- Remediation list
+- Verification results
+- Final risk score
+- Timeline
+- Recommendations
+
+Required APIs:
+
+POST /reports/simulations/{id}/generate
+GET /reports/{id}
+GET /reports/{id}/download-json
+GET /reports/{id}/download-pdf
+
+==================================================
+28. NOTIFICATION SERVICE
+==================================================
+
+Create notification-service.
+
+Responsibilities:
+
+- Send internal notifications.
+- Support Server-Sent Events or WebSocket stream.
+- Deliver webhooks.
+- Retry failed webhook deliveries.
+- Store webhook logs.
+
+Required APIs:
+
+GET /notifications/stream
+POST /internal/notifications
+GET /webhooks/deliveries
+GET /webhooks/deliveries/{id}
+
+==================================================
+29. DATABASE REQUIREMENTS
+==================================================
+
+Use PostgreSQL.
+
+Each service should own its own schema.
+
+Do not share tables directly across services.
+
+Use Flyway or Liquibase.
+
+Use optimistic locking for frequently updated entities.
+
+Use indexes for:
+
+- simulation_id
+- round_id
+- target_id
+- status
+- severity
+- event_type
+- created_at
+- correlation_id
+
+Use UUIDs for primary keys.
+
+Use UTC timestamps.
+
+==================================================
+30. REDIS REQUIREMENTS
+==================================================
+
+Use Redis for:
+
+- Rate limiting state.
+- Temporary simulation state.
+- Agent heartbeat cache.
+- Distributed locks where needed.
+- Webhook retry state if useful.
+
+==================================================
+31. SECURITY REQUIREMENTS
+==================================================
+
+Implement:
+
+- JWT authentication.
+- Role-based authorization.
+- Service-to-service authentication.
+- Input validation.
+- Secure headers.
+- CORS configuration.
+- Rate limiting.
+- Environment-based secrets.
+- No hardcoded credentials.
+- Audit logs.
+- Internal endpoint protection.
+- Correlation IDs.
+- Request logging.
+- Sensitive data masking.
+- Default-deny policies.
+- Production target blocking by default.
+
+All state-changing operations must create audit logs.
+
+==================================================
+32. OBSERVABILITY REQUIREMENTS
+==================================================
+
+Implement:
+
+- Structured JSON logging.
+- Correlation ID propagation.
+- Micrometer metrics.
+- Prometheus endpoints.
+- Grafana dashboards.
+- Health checks.
+- Readiness checks.
+- Liveness checks.
+
+Required metrics:
+
+- active_simulations
+- simulation_rounds_total
+- attack_actions_total
+- detections_total
+- vulnerabilities_open_total
+- vulnerabilities_resolved_total
+- remediations_applied_total
+- remediations_failed_total
+- verification_passed_total
+- verification_failed_total
+- red_team_score
+- blue_team_score
+- unsafe_actions_blocked_total
+- event_processing_latency_ms
+- webhook_delivery_failures_total
+
+==================================================
+33. STANDARD ERROR FORMAT
+==================================================
+
+All APIs must return errors in this format:
+
+{
+  "timestamp": "2026-06-25T10:00:00Z",
+  "status": 400,
+  "error": "Bad Request",
+  "message": "Validation failed",
+  "path": "/api/simulations",
+  "correlationId": "..."
+}
+
+Use global exception handlers.
+
+==================================================
+34. API DESIGN RULES
+==================================================
+
+All APIs must:
+
+- Use REST conventions.
+- Use proper HTTP status codes.
+- Use DTOs.
+- Validate request bodies.
+- Use pagination.
+- Use filtering.
+- Use OpenAPI annotations.
+- Never expose internal entity models directly.
+- Never leak secrets.
+- Include correlation IDs.
+
+Pagination parameters:
+
+- page
+- size
+- sort
+
+Common filters:
+
+- simulationId
+- targetId
+- team
+- severity
+- status
+- date range
+
+==================================================
+35. DEMO SCENARIO
+==================================================
+
+Create a default scenario:
+
+Name:
+Baseline Web Application Defence Simulation
+
+Mode:
+INTERNAL_SANDBOX
+
+Default configuration:
+
+- maxRounds: 5
+- maxDurationMinutes: 60
+- stopWhenNoNewFindingsForRounds: 2
+- minimumAcceptedRiskLevel: LOW
+- retestEnabled: true
+- retestDelaySeconds: 10
+
+Vulnerabilities:
+
+1. Missing authentication on /demo/admin/report
+2. Missing object-level authorization on /demo/users/{id}/documents
+3. Missing rate limit on /demo/login
+4. Exposed mock debug endpoint /demo/debug/config
+5. Missing input validation on /demo/billing/search
+6. Simulated outdated dependency metadata on /demo/dependencies
+
+Expected flow:
+
+1. Start simulation.
+2. Red team discovers vulnerabilities.
+3. Detection engine creates detections.
+4. Blue team triages findings.
+5. Blue team applies patches.
+6. Verification service verifies fixes.
+7. Red team retests.
+8. Simulation stops when no new findings are found for 2 consecutive rounds.
+9. Final report is generated.
+
+==================================================
+36. END-TO-END ACCEPTANCE TEST
+==================================================
+
+Implement an automated end-to-end test.
+
+The test must:
+
+1. Start required containers using Testcontainers or Docker Compose.
+2. Create or load the demo scenario.
+3. Start a simulation.
+4. Confirm red-team agents run.
+5. Confirm vulnerabilities are discovered.
+6. Confirm detection events are created.
+7. Confirm blue-team agents propose remediation.
+8. Confirm remediation service applies patches.
+9. Confirm verification service validates fixes.
+10. Confirm scoring service updates both scores.
+11. Confirm event-log-service contains full timeline.
+12. Confirm dashboard overview returns completed state.
+13. Confirm final report is generated.
+
+==================================================
+37. TESTING REQUIREMENTS
+==================================================
+
+Implement:
+
+- Unit tests.
+- Controller tests.
+- Repository tests.
+- Service tests.
+- Event producer tests.
+- Event consumer tests.
+- Security tests.
+- Policy engine tests.
+- Integration tests with Testcontainers.
+- End-to-end simulation test.
+
+Minimum test coverage target:
+
+- Domain logic: 80%+
+- Critical service logic: 80%+
+- Policy engine: 90%+
+- Orchestrator flow: 80%+
+
+==================================================
+38. DOCKER COMPOSE REQUIREMENTS
+==================================================
+
+docker-compose.yml must include:
+
+- All Spring Boot services
+- PostgreSQL
+- Redis
+- Kafka or RabbitMQ
+- Prometheus
+- Grafana
+
+The local environment must start with:
+
+docker compose up --build
+
+Expose:
+
+- API Gateway
+- Swagger UI
+- Prometheus
+- Grafana
+- Dashboard backend APIs
+
+Provide .env.example with required variables.
+
+==================================================
+39. README REQUIREMENTS
+==================================================
+
+README.md must include:
+
+- Project overview.
+- Safety boundaries.
+- Architecture summary.
+- Microservice list.
+- Technology stack.
+- Prerequisites.
+- Local setup.
+- Environment variables.
+- How to run with Docker Compose.
+- How to start the demo simulation.
+- How to register an external staging target.
+- How ownership verification works.
+- How red-team agents work.
+- How blue-team agents work.
+- How iterative rounds work.
+- How scoring works.
+- How to view OpenAPI docs.
+- How to run tests.
+- How to generate reports.
+- Troubleshooting.
+
+==================================================
+40. DOCUMENTATION REQUIREMENTS
+==================================================
+
+Create documentation files:
+
+docs/architecture.md
+- Explain services and interactions.
+
+docs/security-boundaries.md
+- Explain red-team safety restrictions.
+
+docs/external-targets.md
+- Explain external target registration and verification.
+
+docs/simulation-flow.md
+- Explain iterative simulation lifecycle.
+
+docs/agent-framework.md
+- Explain agent contracts and extension points.
+
+docs/api.md
+- Summarize API groups.
+
+docs/local-development.md
+- Explain local setup.
+
+docs/testing.md
+- Explain test strategy.
+
+docs/deployment.md
+- Explain deployment approach.
+
+==================================================
+41. CODING STANDARDS
+==================================================
+
+Use:
+
+- Clean architecture.
+- Controller-service-repository separation.
+- Constructor injection.
+- DTOs.
+- Validation annotations.
+- Global exception handling.
+- Structured logging.
+- Clear package names.
+- No business logic in controllers.
+- No shared database access between services.
+- No hardcoded secrets.
+- No unsafe command execution.
+- Idempotent event consumers.
+- Retry-safe event handling.
+
+Package naming:
+
+com.cybersim.<service>
+
+Typical packages:
+
+- controller
+- service
+- domain
+- repository
+- dto
+- event
+- config
+- security
+- exception
+- mapper
+- client
+
+==================================================
+42. IMPLEMENTATION ROADMAP
+==================================================
+
+Implement incrementally.
+
+Phase 1:
+- Monorepo structure.
+- Shared modules.
+- Docker Compose.
+- PostgreSQL, Redis, Kafka/RabbitMQ.
+- API gateway.
+- Identity service.
+- Basic OpenAPI setup.
+
+Phase 2:
+- Target registry.
+- Policy engine.
+- Internal sandbox target.
+- Demo scenario seed data.
+
+Phase 3:
+- Simulation orchestrator.
+- Agent orchestrator.
+- Basic red-team agents.
+- Basic blue-team agents.
+
+Phase 4:
+- Vulnerability registry.
+- Detection engine.
+- Remediation service.
+- Verification service.
+
+Phase 5:
+- Iterative round engine.
+- Scoring service.
+- Event log service.
+- Dashboard backend.
+
+Phase 6:
+- External staging target mode.
+- Webhook integration.
+- Reporting service.
+
+Phase 7:
+- Full test suite.
+- Observability.
+- Documentation.
+- Production hardening.
+
+==================================================
+43. FINAL DELIVERABLES
+==================================================
+
+Deliver:
+
+1. Complete source code.
+2. All Spring Boot microservices.
+3. Shared libraries.
+4. Docker Compose local environment.
+5. Database migrations.
+6. OpenAPI documentation.
+7. Event schemas.
+8. Unit tests.
+9. Integration tests.
+10. End-to-end simulation test.
+11. Seeded demo scenario.
+12. README.
+13. Architecture documentation.
+14. Security boundary documentation.
+15. External target integration documentation.
+16. Demo report generation.
+17. Prometheus and Grafana configuration.
+
+==================================================
+44. FINAL ACCEPTANCE CRITERIA
+==================================================
+
+The project is complete only when:
+
+1. docker compose up --build starts the full platform.
+2. API gateway is reachable.
+3. Swagger/OpenAPI docs are available.
+4. Demo scenario is seeded.
+5. A simulation can be started through API.
+6. Red-team agents safely discover sandbox vulnerabilities.
+7. Blue-team agents remediate them.
+8. Verification confirms fixes.
+9. The simulation runs multiple rounds.
+10. The simulation stops based on configured stopping conditions.
+11. Scores are updated.
+12. Timeline events are stored.
+13. Dashboard APIs return correct state.
+14. Final report is generated.
+15. Tests pass.
+16. No red-team action can run without policy approval.
+17. External targets cannot be assessed unless verified.
+18. Production targets are blocked by default.
+19. All services have health checks.
+20. Logs contain correlation IDs.
+
+==================================================
+45. IMPORTANT SAFETY INSTRUCTION FOR IMPLEMENTATION
+==================================================
+
+Do not implement real exploit payloads, malware, credential theft, persistence, destructive testing, arbitrary scanning, or shell execution.
+
+All red-team functionality must be implemented as controlled, harmless, scoped simulation checks.
+
+External target testing must be limited to explicitly registered, verified, authorized staging targets.
+
+When uncertain, deny the action and log an unsafe.action.blocked event.
+
+==================================================
+46. BUILD THE SYSTEM NOW
+==================================================
+
+Generate the project as a production-grade Java Spring Boot microservice monorepo.
+
+Start with a working vertical slice:
+
+1. Identity service.
+2. API gateway.
+3. Target registry.
+4. Policy engine.
+5. Simulation orchestrator.
+6. Target sandbox.
+7. Red-team agent.
+8. Blue-team agent.
+9. Vulnerability registry.
+10. Remediation service.
+11. Verification service.
+12. Scoring service.
+13. Event log.
+14. Dashboard backend.
+15. Docker Compose.
+16. Demo scenario.
+17. End-to-end test.
+
+Then expand the remaining services and complete all requirements above.
+
+The final system must be runnable locally using:
+
+docker compose up --build
