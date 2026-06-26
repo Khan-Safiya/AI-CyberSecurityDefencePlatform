@@ -1,0 +1,125 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: cybersim
+      POSTGRES_USER: cybersim
+      POSTGRES_PASSWORD: cybersim_local_only
+    ports:
+      - "5432:5432"
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    volumes:
+      - ./infrastructure/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+
+  grafana:
+    image: grafana/grafana:11.1.4
+    ports:
+      - "3000:3000"
+
+  api-gateway-service:
+    build: { context: ., args: { SERVICE: api-gateway-service } }
+    ports: ["8080:8080"]
+    environment: &service-env
+      SPRING_PROFILES_ACTIVE: local
+      MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: health,info,prometheus
+    depends_on: [postgres, redis, rabbitmq]
+
+  identity-service:
+    build: { context: ., args: { SERVICE: identity-service } }
+    ports: ["8101:8080"]
+    environment: *service-env
+
+  target-registry-service:
+    build: { context: ., args: { SERVICE: target-registry-service } }
+    ports: ["8102:8080"]
+    environment: *service-env
+
+  policy-engine-service:
+    build: { context: ., args: { SERVICE: policy-engine-service } }
+    ports: ["8103:8080"]
+    environment: *service-env
+
+  target-system-service:
+    build: { context: ., args: { SERVICE: target-system-service } }
+    ports: ["8104:8080"]
+    environment: *service-env
+
+  simulation-orchestrator-service:
+    build: { context: ., args: { SERVICE: simulation-orchestrator-service } }
+    ports: ["8105:8080"]
+    environment: *service-env
+
+  agent-orchestrator-service:
+    build: { context: ., args: { SERVICE: agent-orchestrator-service } }
+    ports: ["8106:8080"]
+    environment: *service-env
+
+  red-team-agent-service:
+    build: { context: ., args: { SERVICE: red-team-agent-service } }
+    ports: ["8107:8080"]
+    environment: *service-env
+
+  blue-team-agent-service:
+    build: { context: ., args: { SERVICE: blue-team-agent-service } }
+    ports: ["8108:8080"]
+    environment: *service-env
+
+  vulnerability-registry-service:
+    build: { context: ., args: { SERVICE: vulnerability-registry-service } }
+    ports: ["8109:8080"]
+    environment: *service-env
+
+  detection-engine-service:
+    build: { context: ., args: { SERVICE: detection-engine-service } }
+    ports: ["8110:8080"]
+    environment: *service-env
+
+  remediation-service:
+    build: { context: ., args: { SERVICE: remediation-service } }
+    ports: ["8111:8080"]
+    environment: *service-env
+
+  verification-service:
+    build: { context: ., args: { SERVICE: verification-service } }
+    ports: ["8112:8080"]
+    environment: *service-env
+
+  scoring-service:
+    build: { context: ., args: { SERVICE: scoring-service } }
+    ports: ["8113:8080"]
+    environment: *service-env
+
+  event-log-service:
+    build: { context: ., args: { SERVICE: event-log-service } }
+    ports: ["8114:8080"]
+    environment: *service-env
+
+  dashboard-backend-service:
+    build: { context: ., args: { SERVICE: dashboard-backend-service } }
+    ports: ["8115:8080"]
+    environment: *service-env
+
+  notification-service:
+    build: { context: ., args: { SERVICE: notification-service } }
+    ports: ["8116:8080"]
+    environment: *service-env
+
+  reporting-service:
+    build: { context: ., args: { SERVICE: reporting-service } }
+    ports: ["8117:8080"]
+    environment: *service-env
