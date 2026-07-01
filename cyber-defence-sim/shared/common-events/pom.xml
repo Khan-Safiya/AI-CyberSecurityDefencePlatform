@@ -15,5 +15,9 @@
       <artifactId>common-dto</artifactId>
       <version>${project.version}</version>
     </dependency>
+    <dependency>
+      <groupId>jakarta.validation</groupId>
+      <artifactId>jakarta.validation-api</artifactId>
+    </dependency>
   </dependencies>
 </project>

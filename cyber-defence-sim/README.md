@@ -27,11 +27,21 @@ Prerequisites:
 - Docker and Docker Compose.
 - Maven 3.9+ and Java 21+ if building outside Docker.
 
+Create local environment values:
+
+```bash
+cp .env.example .env
+```
+
+The example values are for local development only. Change `POSTGRES_PASSWORD`, `JWT_SECRET`, `SERVICE_AUTH_TOKEN`, and `GRAFANA_ADMIN_PASSWORD` in `.env` before using the platform beyond a local demo.
+
 Start everything:
 
 ```bash
 docker compose up --build
 ```
+
+Flyway automatically creates the target-registry, simulation-orchestrator, vulnerability-registry, detection-engine, remediation, verification, scoring, and append-only event-log schemas. It seeds the built-in sandbox target, six baseline findings, six safe detection rules, three linked detection events, and six remediation proposals. Verification and scoring records are created only from real workflow requests, so none are falsely pre-seeded. PostgreSQL files are retained in the `postgres-data` Docker volume across normal container recreation.
 
 Useful endpoints after startup:
 
@@ -40,13 +50,19 @@ Useful endpoints after startup:
 - Policy engine: `http://localhost:8103/policies`
 - Sandbox target: `http://localhost:8104/demo/admin/report`
 - Default scenario: `http://localhost:8105/scenarios/default`
+- Detection rules: `http://localhost:8110/detection-rules`
+- Simulation detections: `http://localhost:8110/simulations/00000000-0000-0000-0000-000000000201/detections`
+- Simulation remediations: `http://localhost:8111/simulations/00000000-0000-0000-0000-000000000201/remediations`
+- Simulation verifications: `http://localhost:8112/simulations/00000000-0000-0000-0000-000000000201/verifications`
+- Simulation scores: `http://localhost:8113/simulations/00000000-0000-0000-0000-000000000201/scores`
+- Score events: `http://localhost:8113/simulations/00000000-0000-0000-0000-000000000201/score-events`
 - Dashboard overview: `http://localhost:8115/dashboard/simulations/00000000-0000-0000-0000-000000000201/overview`
 - Prometheus: `http://localhost:9090`
 - Grafana: `http://localhost:3000`
 
 ## Demo Flow
 
-Create a demo simulation:
+Create a running demo simulation and its first durable round:
 
 ```bash
 curl -X POST http://localhost:8105/simulations \
@@ -59,6 +75,14 @@ Review demo findings:
 ```bash
 curl http://localhost:8109/vulnerabilities
 ```
+
+List a simulation's durable rounds using the ID returned by the create request:
+
+```bash
+curl http://localhost:8105/simulations/{simulationId}/rounds
+```
+
+Round stage advancement and completion are internal operations protected by `X-Service-Token`. Every committed simulation and round transition now creates a transactional outbox event. A scheduled publisher sends pending events to the durable `cybersim.events` RabbitMQ topic exchange, waits for broker confirmation, and retries failures with bounded exponential backoff. Event-log, red-team, detection, remediation, and verification workers use separate durable queues, PostgreSQL inboxes, deterministic result IDs, bounded retries, and dead-letter queues. Detection evidence commits before blue-team work; sandbox patch outcomes commit before verification; synchronized verification evidence commits before `SCORING`. The scoring consumer is the next integration step.
 
 Evaluate a safe red-team action:
 
@@ -80,4 +104,4 @@ External targets start disabled or pending verification. A target must:
 
 ## Status
 
-This is a vertical slice scaffold, not the final production system. Persistence, JWT signing, service-to-service auth enforcement across all services, RabbitMQ event producers/consumers, Flyway migrations, Testcontainers, and full OpenAPI/security hardening are the next implementation phases.
+This is a vertical slice scaffold, not the final production system. The target registry, iterative simulation rounds, vulnerability registry, detection engine, remediation service, verification service, scoring service, event log, and worker inboxes now have isolated PostgreSQL schemas and Flyway migrations. Round changes and outbound RabbitMQ events commit together; event-log, red-team, detection, remediation, and verification processing are idempotent from the application's perspective. The scoring stage consumer, JWT signing, stronger service identity, persistence for remaining stateful services, PostgreSQL container integration tests, and full OpenAPI/security hardening remain later implementation steps.

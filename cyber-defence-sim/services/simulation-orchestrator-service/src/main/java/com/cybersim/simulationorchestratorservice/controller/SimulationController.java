@@ -1,57 +1,89 @@
 package com.cybersim.simulationorchestratorservice.controller;
 
+import com.cybersim.shared.observability.ApiErrors;
 import com.cybersim.shared.dto.SimulationRequest;
 import com.cybersim.shared.dto.SimulationResponse;
 import com.cybersim.shared.dto.TargetMode;
+import com.cybersim.simulationorchestratorservice.model.SimulationRecord;
+import com.cybersim.simulationorchestratorservice.model.SimulationRoundRecord;
+import com.cybersim.simulationorchestratorservice.outbox.OutboxEventFactory;
+import com.cybersim.simulationorchestratorservice.outbox.OutboxStore;
+import com.cybersim.simulationorchestratorservice.store.SimulationRoundStore;
+import com.cybersim.simulationorchestratorservice.store.SimulationStore;
+import jakarta.validation.Valid;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 
 @RestController
 @RequestMapping
 public class SimulationController {
-    private final Map<UUID, SimulationResponse> simulations = new ConcurrentHashMap<>();
+    private final SimulationStore simulationStore;
+    private final SimulationRoundStore roundStore;
+    private final OutboxStore outboxStore;
+    private final OutboxEventFactory outboxEventFactory;
+
+    public SimulationController(
+            SimulationStore simulationStore,
+            SimulationRoundStore roundStore,
+            OutboxStore outboxStore,
+            OutboxEventFactory outboxEventFactory
+    ) {
+        this.simulationStore = simulationStore;
+        this.roundStore = roundStore;
+        this.outboxStore = outboxStore;
+        this.outboxEventFactory = outboxEventFactory;
+    }
 
     @PostMapping({"/simulations", "/integration/targets/{targetId}/start-assessment"})
-    public ResponseEntity<SimulationResponse> start(@PathVariable(required = false) UUID targetId, @RequestBody(required = false) SimulationRequest request) {
+    @Transactional
+    public ResponseEntity<SimulationResponse> start(@PathVariable(required = false) UUID targetId, @Valid @RequestBody(required = false) SimulationRequest request) {
         UUID simulationId = UUID.randomUUID();
         UUID resolvedTargetId = targetId != null ? targetId : request == null ? UUID.fromString("00000000-0000-0000-0000-000000000101") : request.targetId();
         String name = request == null || request.name() == null ? "Baseline Web Application Defence Simulation" : request.name();
-        List<String> timeline = new ArrayList<>();
-        timeline.add("simulation.started");
-        timeline.add("round.1.red-team.completed: 6 safe sandbox findings discovered");
-        timeline.add("round.1.detection.created: 6 detections generated");
-        timeline.add("round.1.blue-team.completed: remediation proposed and applied");
-        timeline.add("round.1.verification.completed: fixes verified");
-        timeline.add("simulation.completed");
-        SimulationResponse response = new SimulationResponse(
+        List<String> timeline = List.of("simulation.started", "round.1.created");
+        Instant now = Instant.now();
+        SimulationRecord simulation = new SimulationRecord(
                 simulationId,
                 name,
                 request == null ? TargetMode.INTERNAL_SANDBOX : request.mode(),
                 resolvedTargetId,
-                "COMPLETED",
+                "RUNNING",
                 1,
-                220,
-                270,
+                request == null ? 5 : request.maxRounds(),
+                request == null ? 60 : request.maxDurationMinutes(),
+                request == null ? 2 : request.stopWhenNoNewFindingsForRounds(),
+                request == null ? "LOW" : request.minimumAcceptedRiskLevel(),
+                request == null || request.retestEnabled(),
+                request == null ? 10 : request.retestDelaySeconds(),
                 0,
+                0,
+                50,
+                null,
                 timeline,
-                Instant.now(),
-                Instant.now()
+                now,
+                null
         );
-        simulations.put(simulationId, response);
+        SimulationResponse response = simulationStore.save(simulation).toResponse();
+        SimulationRoundRecord firstRound = roundStore.save(SimulationRoundRecord.create(simulationId, 1, now));
+        outboxStore.save(outboxEventFactory.create("simulation.started", simulationId, null,
+                Map.of("targetId", resolvedTargetId.toString(), "mode", simulation.mode().name())));
+        outboxStore.save(outboxEventFactory.create("simulation.round.created", simulationId, firstRound.id(),
+                Map.of("roundNumber", 1, "status", firstRound.status())));
         return ResponseEntity.status(201).body(response);
     }
 
     @GetMapping({"/simulations/{id}", "/integration/assessments/{id}"})
-    public ResponseEntity<SimulationResponse> get(@PathVariable UUID id) {
-        SimulationResponse response = simulations.get(id);
-        return response == null ? ResponseEntity.notFound().build() : ResponseEntity.ok(response);
+    public ResponseEntity<Object> get(@PathVariable UUID id) {
+        return simulationStore.findById(id)
+                .<ResponseEntity<Object>>map(simulation -> ResponseEntity.ok(simulation.toResponse()))
+                .orElseGet(() -> error(HttpStatus.NOT_FOUND, "Simulation not found: " + id, "/simulations/" + id));
     }
 
     @GetMapping("/scenarios/default")
@@ -70,5 +102,9 @@ public class SimulationController {
                         "Simulated outdated dependency metadata on /demo/dependencies"
                 )
         );
+    }
+
+    private ResponseEntity<Object> error(HttpStatus status, String message, String path) {
+        return ApiErrors.response(status, message, path);
     }
 }

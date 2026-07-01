@@ -2,6 +2,7 @@ package com.cybersim.policyengineservice.controller;
 
 import com.cybersim.shared.dto.PolicyDecisionResponse;
 import com.cybersim.shared.dto.PolicyEvaluationRequest;
+import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.Instant;
@@ -28,7 +29,11 @@ public class PolicyController {
     );
 
     @PostMapping("/evaluate-action")
-    public PolicyDecisionResponse evaluate(@RequestBody PolicyEvaluationRequest request) {
+    public PolicyDecisionResponse evaluate(@Valid @RequestBody PolicyEvaluationRequest request) {
+        if (request == null) {
+            return new PolicyDecisionResponse(UUID.randomUUID(), null, null, null, null, false,
+                    "Denied by default policy: missing evaluation request", Instant.now(), "baseline-safe-policy-v1");
+        }
         String method = request.httpMethod() == null ? "GET" : request.httpMethod().toUpperCase();
         boolean safeMethod = List.of("GET", "POST", "PATCH").contains(method);
         boolean allowedAction = ALLOWED_ACTIONS.contains(request.actionType());

@@ -1,5 +1,7 @@
 package com.cybersim.targetsystemservice.controller;
 
+import com.cybersim.shared.observability.ApiErrors;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -11,8 +13,10 @@ import java.util.Map;
 @RestController
 public class DemoTargetController {
     private final Map<String, Boolean> patched = new LinkedHashMap<>();
+    private final String expectedServiceToken;
 
-    public DemoTargetController() {
+    public DemoTargetController(@Value("${SERVICE_AUTH_TOKEN:local-service-token}") String expectedServiceToken) {
+        this.expectedServiceToken = expectedServiceToken;
         patched.put("auth-required", false);
         patched.put("object-authorization", false);
         patched.put("rate-limit", false);
@@ -22,9 +26,9 @@ public class DemoTargetController {
     }
 
     @GetMapping("/demo/admin/report")
-    public ResponseEntity<Map<String, Object>> adminReport() {
+    public ResponseEntity<Object> adminReport() {
         if (patched.get("auth-required")) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("status", "auth-required"));
+            return error(HttpStatus.UNAUTHORIZED, "Authentication required", "/demo/admin/report");
         }
         return ResponseEntity.ok(Map.of("status", "vulnerable", "issue", "missing authentication"));
     }
@@ -40,9 +44,9 @@ public class DemoTargetController {
     }
 
     @GetMapping("/demo/debug/config")
-    public ResponseEntity<Map<String, Object>> debugConfig() {
+    public ResponseEntity<Object> debugConfig() {
         if (patched.get("disable-debug-endpoint")) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("status", "disabled"));
+            return error(HttpStatus.NOT_FOUND, "Debug endpoint is disabled", "/demo/debug/config");
         }
         return ResponseEntity.ok(Map.of("debug", true, "safeMockOnly", true));
     }
@@ -59,19 +63,42 @@ public class DemoTargetController {
     }
 
     @PostMapping("/internal/patches/{patchName}")
-    public ResponseEntity<Map<String, Object>> applyPatch(@PathVariable String patchName, @RequestHeader(value = "X-Service-Token", required = false) String serviceToken) {
-        if (serviceToken == null || serviceToken.isBlank()) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("error", "service-to-service token required"));
+    public ResponseEntity<Object> applyPatch(@PathVariable String patchName, @RequestHeader(value = "X-Service-Token", required = false) String serviceToken) {
+        if (!validServiceToken(serviceToken)) {
+            return error(HttpStatus.UNAUTHORIZED, "Valid service-to-service token required", "/internal/patches/" + patchName);
         }
         if (!patched.containsKey(patchName)) {
-            return ResponseEntity.notFound().build();
+            return error(HttpStatus.NOT_FOUND, "Unknown sandbox patch: " + patchName, "/internal/patches/" + patchName);
         }
         patched.put(patchName, true);
         return ResponseEntity.ok(Map.of("patch", patchName, "status", "APPLIED"));
     }
 
+    @PostMapping("/internal/patches/{patchName}/rollback")
+    public ResponseEntity<Object> rollbackPatch(@PathVariable String patchName, @RequestHeader(value = "X-Service-Token", required = false) String serviceToken) {
+        if (!validServiceToken(serviceToken)) {
+            return error(HttpStatus.UNAUTHORIZED, "Valid service-to-service token required", "/internal/patches/" + patchName + "/rollback");
+        }
+        if (!patched.containsKey(patchName)) {
+            return error(HttpStatus.NOT_FOUND, "Unknown sandbox patch: " + patchName, "/internal/patches/" + patchName + "/rollback");
+        }
+        patched.put(patchName, false);
+        return ResponseEntity.ok(Map.of("patch", patchName, "status", "ROLLED_BACK"));
+    }
+
     @GetMapping("/internal/patches/status")
-    public Map<String, Boolean> status() {
-        return patched;
+    public ResponseEntity<Object> status(@RequestHeader(value = "X-Service-Token", required = false) String serviceToken) {
+        if (!validServiceToken(serviceToken)) {
+            return error(HttpStatus.UNAUTHORIZED, "Valid service-to-service token required", "/internal/patches/status");
+        }
+        return ResponseEntity.ok(Map.copyOf(patched));
+    }
+
+    private boolean validServiceToken(String serviceToken) {
+        return serviceToken != null && !serviceToken.isBlank() && serviceToken.equals(expectedServiceToken);
+    }
+
+    private ResponseEntity<Object> error(HttpStatus status, String message, String path) {
+        return ApiErrors.response(status, message, path);
     }
 }

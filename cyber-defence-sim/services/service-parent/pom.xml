@@ -23,6 +23,21 @@
       <version>${project.version}</version>
     </dependency>
     <dependency>
+      <groupId>com.cybersim</groupId>
+      <artifactId>common-observability</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>com.cybersim</groupId>
+      <artifactId>common-exceptions</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>com.cybersim</groupId>
+      <artifactId>common-validation</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-web</artifactId>
     </dependency>
@@ -54,6 +69,13 @@
         <configuration>
           <mainClass>${start-class}</mainClass>
         </configuration>
+        <executions>
+          <execution>
+            <goals>
+              <goal>repackage</goal>
+            </goals>
+          </execution>
+        </executions>
       </plugin>
     </plugins>
   </build>

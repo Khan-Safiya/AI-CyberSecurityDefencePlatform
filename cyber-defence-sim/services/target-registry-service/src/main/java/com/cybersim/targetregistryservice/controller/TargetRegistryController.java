@@ -3,107 +3,92 @@ package com.cybersim.targetregistryservice.controller;
 import com.cybersim.shared.dto.TargetMode;
 import com.cybersim.shared.dto.TargetRegistrationRequest;
 import com.cybersim.shared.dto.TargetResponse;
+import com.cybersim.shared.observability.ApiErrors;
+import com.cybersim.shared.validation.TargetScopeValidator;
+import com.cybersim.targetregistryservice.model.TargetRecord;
+import com.cybersim.targetregistryservice.store.TargetStore;
+import jakarta.validation.Valid;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.time.Instant;
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 
 @RestController
 @RequestMapping
 public class TargetRegistryController {
-    private final Map<UUID, TargetResponse> targets = new ConcurrentHashMap<>();
+    private final TargetStore targetStore;
 
-    public TargetRegistryController() {
-        TargetResponse sandbox = new TargetResponse(
-                UUID.fromString("00000000-0000-0000-0000-000000000101"),
-                "Built-in sandbox target",
-                TargetMode.INTERNAL_SANDBOX,
-                "http://target-system-service:8080",
-                "SANDBOX",
-                List.of("target-system-service", "localhost"),
-                List.of("/demo/**"),
-                List.of("GET", "POST"),
-                "VERIFIED",
-                "ACTIVE",
-                "sandbox-auto-verified",
-                Instant.now()
-        );
-        targets.put(sandbox.id(), sandbox);
+    public TargetRegistryController(TargetStore targetStore) {
+        this.targetStore = targetStore;
     }
 
     @PostMapping({"/targets", "/integration/targets"})
-    public ResponseEntity<TargetResponse> create(@RequestBody TargetRegistrationRequest request) {
-        UUID id = UUID.randomUUID();
+    public ResponseEntity<Object> create(@Valid @RequestBody TargetRegistrationRequest request) {
+        var scopeViolation = TargetScopeValidator.findViolation(request);
+        if (scopeViolation.isPresent()) {
+            return error(HttpStatus.BAD_REQUEST, "Unsafe target scope: " + scopeViolation.get(), "/targets");
+        }
         boolean internalSandbox = request.mode() == TargetMode.INTERNAL_SANDBOX;
+        boolean productionEnvironment = isProductionEnvironment(request.environmentType());
         boolean authorizedStaging = request.mode() == TargetMode.EXTERNAL_STAGING_TARGET
                 && request.writtenAuthorizationConfirmed()
-                && !"PRODUCTION".equalsIgnoreCase(request.environmentType());
+                && !productionEnvironment;
         String status = internalSandbox ? "ACTIVE" : "PENDING_VERIFICATION";
         String verification = internalSandbox ? "VERIFIED" : "PENDING";
         if (!internalSandbox && !authorizedStaging) {
             status = "DISABLED";
             verification = "FAILED";
         }
-        TargetResponse response = new TargetResponse(
-                id,
-                request.name(),
-                request.mode(),
-                request.baseUrl(),
-                request.environmentType(),
-                request.allowedHosts() == null ? List.of() : request.allowedHosts(),
-                request.allowedPaths() == null ? List.of() : request.allowedPaths(),
-                request.allowedHttpMethods() == null ? List.of("GET") : request.allowedHttpMethods(),
-                verification,
-                status,
-                UUID.randomUUID().toString(),
-                Instant.now()
-        );
-        targets.put(id, response);
-        return ResponseEntity.status(201).body(response);
+        TargetRecord stored = targetStore.save(TargetRecord.from(request, verification, status));
+        return ResponseEntity.status(201).body(stored.toResponse());
     }
 
     @GetMapping({"/targets", "/integration/targets"})
     public List<TargetResponse> list() {
-        return new ArrayList<>(targets.values());
+        return targetStore.findAll().stream().map(TargetRecord::toResponse).toList();
     }
 
     @GetMapping({"/targets/{id}", "/integration/targets/{id}"})
-    public ResponseEntity<TargetResponse> get(@PathVariable UUID id) {
-        TargetResponse target = targets.get(id);
-        return target == null ? ResponseEntity.notFound().build() : ResponseEntity.ok(target);
+    public ResponseEntity<Object> get(@PathVariable UUID id) {
+        return targetStore.findById(id)
+                .<ResponseEntity<Object>>map(target -> ResponseEntity.ok(target.toResponse()))
+                .orElseGet(() -> error(HttpStatus.NOT_FOUND, "Target not found: " + id, "/targets/" + id));
     }
 
     @PostMapping({"/targets/{id}/verify-ownership", "/integration/targets/{id}/verify-ownership"})
-    public ResponseEntity<TargetResponse> verify(@PathVariable UUID id) {
-        TargetResponse target = targets.get(id);
+    public ResponseEntity<Object> verify(@PathVariable UUID id) {
+        TargetRecord target = targetStore.findById(id).orElse(null);
         if (target == null) {
-            return ResponseEntity.notFound().build();
+            return error(HttpStatus.NOT_FOUND, "Target not found: " + id, "/targets/" + id + "/verify-ownership");
         }
-        if ("PRODUCTION".equalsIgnoreCase(target.environmentType())) {
-            return ResponseEntity.badRequest().build();
+        if ("FAILED".equalsIgnoreCase(target.ownershipVerificationStatus()) || "DISABLED".equalsIgnoreCase(target.status())) {
+            return error(HttpStatus.BAD_REQUEST, "Target is disabled or failed ownership verification", "/targets/" + id + "/verify-ownership");
         }
-        TargetResponse verified = new TargetResponse(target.id(), target.name(), target.mode(), target.baseUrl(),
-                target.environmentType(), target.allowedHosts(), target.allowedPaths(), target.allowedHttpMethods(),
-                "VERIFIED", "ACTIVE", target.verificationToken(), target.createdAt());
-        targets.put(id, verified);
-        return ResponseEntity.ok(verified);
+        if (isProductionEnvironment(target.environmentType())) {
+            return error(HttpStatus.BAD_REQUEST, "Production targets are blocked by default", "/targets/" + id + "/verify-ownership");
+        }
+        TargetRecord verified = targetStore.save(target.withState("VERIFIED", "ACTIVE"));
+        return ResponseEntity.ok(verified.toResponse());
     }
 
     @PostMapping("/targets/{id}/disable")
-    public ResponseEntity<TargetResponse> disable(@PathVariable UUID id) {
-        TargetResponse target = targets.get(id);
+    public ResponseEntity<Object> disable(@PathVariable UUID id) {
+        TargetRecord target = targetStore.findById(id).orElse(null);
         if (target == null) {
-            return ResponseEntity.notFound().build();
+            return error(HttpStatus.NOT_FOUND, "Target not found: " + id, "/targets/" + id + "/disable");
         }
-        TargetResponse disabled = new TargetResponse(target.id(), target.name(), target.mode(), target.baseUrl(),
-                target.environmentType(), target.allowedHosts(), target.allowedPaths(), target.allowedHttpMethods(),
-                target.ownershipVerificationStatus(), "DISABLED", target.verificationToken(), target.createdAt());
-        targets.put(id, disabled);
-        return ResponseEntity.ok(disabled);
+        TargetRecord disabled = targetStore.save(target.withState(target.ownershipVerificationStatus(), "DISABLED"));
+        return ResponseEntity.ok(disabled.toResponse());
+    }
+
+    private ResponseEntity<Object> error(HttpStatus status, String message, String path) {
+        return ApiErrors.response(status, message, path);
+    }
+
+    private boolean isProductionEnvironment(String environmentType) {
+        return "PRODUCTION".equalsIgnoreCase(environmentType)
+                || "PRODUCTION_BLOCKED".equalsIgnoreCase(environmentType);
     }
 }
