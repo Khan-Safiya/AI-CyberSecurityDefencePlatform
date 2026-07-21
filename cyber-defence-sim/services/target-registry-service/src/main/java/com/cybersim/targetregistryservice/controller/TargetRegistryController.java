@@ -53,7 +53,7 @@ public class TargetRegistryController {
         return targetStore.findAll().stream().map(TargetRecord::toResponse).toList();
     }
 
-    @GetMapping({"/targets/{id}", "/integration/targets/{id}"})
+    @GetMapping({"/targets/{id}", "/integration/targets/{id}", "/internal/targets/{id}"})
     public ResponseEntity<Object> get(@PathVariable UUID id) {
         return targetStore.findById(id)
                 .<ResponseEntity<Object>>map(target -> ResponseEntity.ok(target.toResponse()))

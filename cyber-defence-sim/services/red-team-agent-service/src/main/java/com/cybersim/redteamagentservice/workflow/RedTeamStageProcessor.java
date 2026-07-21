@@ -2,12 +2,17 @@ package com.cybersim.redteamagentservice.workflow;
 
 import com.cybersim.shared.dto.PolicyEvaluationRequest;
 import com.cybersim.shared.dto.SimulationResponse;
+import com.cybersim.shared.dto.TargetMode;
+import com.cybersim.shared.dto.TargetResponse;
 import com.cybersim.shared.dto.VulnerabilityCreateRequest;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 @Component
@@ -37,16 +42,43 @@ public class RedTeamStageProcessor {
                     "Update dependency metadata."));
 
     private final RedTeamWorkflowClient client;
+    private final ExternalCheckStrategy externalCheckStrategy;
+    private final boolean externalChecksEnabled;
 
-    public RedTeamStageProcessor(RedTeamWorkflowClient client) {
+    @Autowired
+    public RedTeamStageProcessor(RedTeamWorkflowClient client, ExternalCheckStrategy externalCheckStrategy,
+                                  @Value("${red-team.external-checks.enabled:false}") boolean externalChecksEnabled) {
         this.client = client;
+        this.externalCheckStrategy = externalCheckStrategy;
+        this.externalChecksEnabled = externalChecksEnabled;
+    }
+
+    RedTeamStageProcessor(RedTeamWorkflowClient client) {
+        this(client, null, false);
     }
 
     public int process(UUID messageId, UUID simulationId, UUID roundId) {
         SimulationResponse simulation = client.simulation(simulationId);
-        if (simulation == null || !SANDBOX_TARGET_ID.equals(simulation.targetId())) {
-            throw new IllegalStateException("Automated red-team checks are restricted to the built-in sandbox target");
+        if (simulation != null && SANDBOX_TARGET_ID.equals(simulation.targetId())) {
+            return runSandboxChecks(messageId, simulationId, roundId);
         }
+        if (simulation != null && externalChecksEnabled && simulation.mode() == TargetMode.EXTERNAL_STAGING_TARGET) {
+            return runExternalChecks(messageId, simulationId, roundId, simulation);
+        }
+        throw new IllegalStateException("Automated red-team checks are restricted to the built-in sandbox target");
+    }
+
+    private int runExternalChecks(UUID messageId, UUID simulationId, UUID roundId, SimulationResponse simulation) {
+        Optional<TargetResponse> maybeTarget = client.target(simulation.targetId());
+        if (maybeTarget.isEmpty() || !"ACTIVE".equalsIgnoreCase(maybeTarget.get().status())) {
+            throw new IllegalStateException("External target is not active: " + simulation.targetId());
+        }
+        int findings = externalCheckStrategy.run(client, messageId, simulationId, roundId, maybeTarget.get());
+        client.completeRedTeamStage(simulationId, roundId);
+        return findings;
+    }
+
+    private int runSandboxChecks(UUID messageId, UUID simulationId, UUID roundId) {
         Map<String, Boolean> patchStates = client.sandboxPatchStates();
         if (patchStates == null) {
             throw new IllegalStateException("Sandbox patch state is unavailable");
@@ -61,7 +93,7 @@ public class RedTeamStageProcessor {
             if (patched) {
                 continue;
             }
-            PolicyEvaluationRequest policyRequest = new PolicyEvaluationRequest(simulationId, simulation.targetId(),
+            PolicyEvaluationRequest policyRequest = new PolicyEvaluationRequest(simulationId, SANDBOX_TARGET_ID,
                     RED_TEAM_AGENT_ID, check.actionType(), "target-system-service", check.path(), check.method());
             if (!client.policyAllows(policyRequest)) {
                 throw new IllegalStateException("Policy denied safe red-team action: " + check.actionType());
@@ -69,7 +101,7 @@ public class RedTeamStageProcessor {
             UUID findingId = UUID.nameUUIDFromBytes((messageId + ":" + check.type())
                     .getBytes(StandardCharsets.UTF_8));
             client.createFinding(findingId, new VulnerabilityCreateRequest(
-                    simulationId, roundId, simulation.targetId(), check.title(), check.description(), check.type(),
+                    simulationId, roundId, SANDBOX_TARGET_ID, check.title(), check.description(), check.type(),
                     check.severity(), "Allowlisted sandbox state reports this check as vulnerable.",
                     "Inspect only the built-in mock endpoint " + check.path() + ".", check.path(), check.expectedFix(),
                     RED_TEAM_AGENT_ID, null));

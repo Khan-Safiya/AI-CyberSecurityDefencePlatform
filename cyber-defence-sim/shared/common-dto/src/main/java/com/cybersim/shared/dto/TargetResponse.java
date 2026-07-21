@@ -12,6 +12,7 @@ public record TargetResponse(
         String environmentType,
         List<String> allowedHosts,
         List<String> allowedPaths,
+        List<String> excludedPaths,
         List<String> allowedHttpMethods,
         String ownershipVerificationStatus,
         String status,

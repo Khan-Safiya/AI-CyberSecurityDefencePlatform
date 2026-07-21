@@ -20,6 +20,7 @@
     <module>shared/common-dto</module>
     <module>shared/common-events</module>
     <module>shared/common-security</module>
+    <module>shared/common-http</module>
     <module>shared/common-observability</module>
     <module>shared/common-exceptions</module>
     <module>shared/common-validation</module>

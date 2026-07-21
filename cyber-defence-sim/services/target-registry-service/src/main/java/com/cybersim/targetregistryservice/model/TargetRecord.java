@@ -46,6 +46,6 @@ public record TargetRecord(
 
     public TargetResponse toResponse() {
         return new TargetResponse(id, name, mode, baseUrl, environmentType, allowedHosts, allowedPaths,
-                allowedHttpMethods, ownershipVerificationStatus, status, verificationToken, createdAt);
+                excludedPaths, allowedHttpMethods, ownershipVerificationStatus, status, verificationToken, createdAt);
     }
 }

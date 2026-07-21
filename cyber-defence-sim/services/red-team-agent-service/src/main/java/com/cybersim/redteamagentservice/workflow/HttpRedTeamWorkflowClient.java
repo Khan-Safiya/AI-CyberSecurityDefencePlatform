@@ -3,14 +3,18 @@ package com.cybersim.redteamagentservice.workflow;
 import com.cybersim.shared.dto.PolicyDecisionResponse;
 import com.cybersim.shared.dto.PolicyEvaluationRequest;
 import com.cybersim.shared.dto.SimulationResponse;
+import com.cybersim.shared.dto.TargetResponse;
 import com.cybersim.shared.dto.VulnerabilityCreateRequest;
 import com.cybersim.shared.security.ServiceJwtSupport;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientException;
+import org.springframework.web.client.RestClientResponseException;
 
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 @Component
@@ -19,12 +23,14 @@ class HttpRedTeamWorkflowClient implements RedTeamWorkflowClient {
     private final RestClient policyClient;
     private final RestClient vulnerabilityClient;
     private final RestClient targetClient;
+    private final RestClient targetRegistryClient;
 
     HttpRedTeamWorkflowClient(
             @Value("${red-team.simulation-base-url}") String simulationUrl,
             @Value("${red-team.policy-base-url}") String policyUrl,
             @Value("${red-team.vulnerability-base-url}") String vulnerabilityUrl,
             @Value("${red-team.target-base-url}") String targetUrl,
+            @Value("${red-team.target-registry-base-url}") String targetRegistryUrl,
             @Value("${service-jwt.secret}") String serviceJwtSecret,
             @Value("${service-jwt.issuer}") String serviceJwtIssuer
     ) {
@@ -40,6 +46,9 @@ class HttpRedTeamWorkflowClient implements RedTeamWorkflowClient {
         ServiceJwtSupport.TokenIssuer targetTokenIssuer = ServiceJwtSupport.issuer(serviceJwtSecret, serviceJwtIssuer,
                 "red-team-agent-service", "SERVICE_RED_TEAM", "target-system-service");
         targetClient = serviceJwtClient(targetUrl, targetTokenIssuer);
+        ServiceJwtSupport.TokenIssuer targetRegistryTokenIssuer = ServiceJwtSupport.issuer(serviceJwtSecret, serviceJwtIssuer,
+                "red-team-agent-service", "SERVICE_RED_TEAM", "target-registry-service");
+        targetRegistryClient = serviceJwtClient(targetRegistryUrl, targetRegistryTokenIssuer);
     }
 
     @Override
@@ -51,6 +60,18 @@ class HttpRedTeamWorkflowClient implements RedTeamWorkflowClient {
     public Map<String, Boolean> sandboxPatchStates() {
         return targetClient.get().uri("/internal/patches/status").retrieve()
                 .body(new ParameterizedTypeReference<>() { });
+    }
+
+    @Override
+    public Optional<TargetResponse> target(UUID targetId) {
+        try {
+            return Optional.ofNullable(targetRegistryClient.get().uri("/internal/targets/{id}", targetId)
+                    .retrieve().body(TargetResponse.class));
+        } catch (RestClientResponseException exception) {
+            return Optional.empty();
+        } catch (RestClientException exception) {
+            return Optional.empty();
+        }
     }
 
     @Override

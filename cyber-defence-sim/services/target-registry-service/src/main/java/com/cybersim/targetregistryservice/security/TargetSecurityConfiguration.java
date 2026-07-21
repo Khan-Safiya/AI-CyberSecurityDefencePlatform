@@ -25,6 +25,8 @@ public class TargetSecurityConfiguration {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/actuator/health", "/actuator/info").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/internal/targets/**")
+                        .hasAnyRole("SERVICE_POLICY", "SERVICE_RED_TEAM")
                         .requestMatchers(HttpMethod.GET, "/targets/**", "/integration/targets/**")
                         .hasAnyRole("ADMIN", "SIMULATION_OPERATOR", "AUDITOR")
                         .requestMatchers("/targets/**", "/integration/targets/**")
