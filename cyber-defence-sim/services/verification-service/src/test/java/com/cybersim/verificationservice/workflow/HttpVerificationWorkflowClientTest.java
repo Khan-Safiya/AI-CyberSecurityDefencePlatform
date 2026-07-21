@@ -10,7 +10,6 @@ import org.springframework.web.client.RestClient;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.springframework.test.web.client.match.MockRestRequestMatchers.header;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
@@ -20,34 +19,27 @@ class HttpVerificationWorkflowClientTest {
     private static final UUID VULNERABILITY_ID = UUID.fromString("00000000-0000-0000-0000-000000000501");
 
     @Test
-    void loadsRemediationChecksPatchAndSynchronizesWithServiceToken() {
+    void loadsRemediationChecksPatchAndSynchronizesOutcome() {
         RestClient.Builder remediationBuilder = RestClient.builder().baseUrl("http://remediation");
         RestClient.Builder vulnerabilityBuilder = RestClient.builder().baseUrl("http://vulnerability");
         RestClient.Builder targetBuilder = RestClient.builder().baseUrl("http://target");
         MockRestServiceServer remediationServer = MockRestServiceServer.bindTo(remediationBuilder).build();
         MockRestServiceServer vulnerabilityServer = MockRestServiceServer.bindTo(vulnerabilityBuilder).build();
         MockRestServiceServer targetServer = MockRestServiceServer.bindTo(targetBuilder).build();
-        remediationBuilder.defaultHeader("X-Service-Token", "service-token");
-        vulnerabilityBuilder.defaultHeader("X-Service-Token", "service-token");
-        targetBuilder.defaultHeader("X-Service-Token", "service-token");
         HttpVerificationWorkflowClient client = new HttpVerificationWorkflowClient(
                 remediationBuilder.build(), vulnerabilityBuilder.build(), targetBuilder.build(),
                 RestClient.create("http://simulation"));
 
         remediationServer.expect(requestTo("http://remediation/remediations/" + REMEDIATION_ID))
                 .andExpect(method(HttpMethod.GET))
-                .andExpect(header("X-Service-Token", "service-token"))
                 .andRespond(withSuccess(remediationJson(), MediaType.APPLICATION_JSON));
         targetServer.expect(requestTo("http://target/internal/patches/status"))
-                .andExpect(header("X-Service-Token", "service-token"))
                 .andRespond(withSuccess("{\"auth-required\":true}", MediaType.APPLICATION_JSON));
         remediationServer.expect(requestTo("http://remediation/internal/remediations/" + REMEDIATION_ID + "/verification-result"))
                 .andExpect(method(HttpMethod.POST))
-                .andExpect(header("X-Service-Token", "service-token"))
                 .andRespond(withSuccess());
         vulnerabilityServer.expect(requestTo("http://vulnerability/internal/vulnerabilities/" + VULNERABILITY_ID + "/verification-result"))
                 .andExpect(method(HttpMethod.POST))
-                .andExpect(header("X-Service-Token", "service-token"))
                 .andRespond(withSuccess());
 
         RemediationResponse remediation = client.findRemediation(REMEDIATION_ID).orElseThrow();

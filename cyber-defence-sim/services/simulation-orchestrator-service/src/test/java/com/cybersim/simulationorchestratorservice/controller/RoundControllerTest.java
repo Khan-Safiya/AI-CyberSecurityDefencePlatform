@@ -41,7 +41,7 @@ class RoundControllerTest {
         roundStore = new InMemoryRoundStore();
         outboxStore = new InMemoryOutboxStore();
         controller = new RoundController(simulationStore, roundStore, outboxStore,
-                new OutboxEventFactory(new ObjectMapper()), "service-token");
+                new OutboxEventFactory(new ObjectMapper()));
     }
 
     @Test
@@ -125,12 +125,10 @@ class RoundControllerTest {
     }
 
     @Test
-    void internalTransitionsRequireServiceTokenAndDisabledRetestStopsAfterRound() {
+    void disabledRetestStopsAfterRound() {
         SimulationRecord simulation = createSimulation(5, 2, Instant.now(), false);
         SimulationRoundRecord round = roundStore.save(SimulationRoundRecord.create(simulation.id(), 1, Instant.now()));
 
-        assertThat(controller.advance(simulation.id(), round.id(), null).getStatusCode())
-                .isEqualTo(HttpStatus.UNAUTHORIZED);
         advanceToScoring(simulation.id(), round.id());
 
         RoundCompletionResponse response = complete(simulation.id(), round.id(),
@@ -144,12 +142,12 @@ class RoundControllerTest {
         SimulationRecord simulation = createSimulation(3, 2, Instant.now());
         SimulationRoundRecord round = roundStore.save(SimulationRoundRecord.create(simulation.id(), 1, Instant.now()));
 
-        assertThat(controller.redTeamComplete(simulation.id(), round.id(), "service-token").getStatusCode())
+        assertThat(controller.redTeamComplete(simulation.id(), round.id()).getStatusCode())
                 .isEqualTo(HttpStatus.CONFLICT);
         assertThat(advance(simulation.id(), round.id()).status()).isEqualTo("RED_TEAM_RUNNING");
 
-        ResponseEntity<Object> first = controller.redTeamComplete(simulation.id(), round.id(), "service-token");
-        ResponseEntity<Object> retry = controller.redTeamComplete(simulation.id(), round.id(), "service-token");
+        ResponseEntity<Object> first = controller.redTeamComplete(simulation.id(), round.id());
+        ResponseEntity<Object> retry = controller.redTeamComplete(simulation.id(), round.id());
 
         assertThat(((SimulationRoundResponse) first.getBody()).status()).isEqualTo("DETECTION_RUNNING");
         assertThat(((SimulationRoundResponse) retry.getBody()).status()).isEqualTo("DETECTION_RUNNING");
@@ -163,10 +161,10 @@ class RoundControllerTest {
         SimulationRecord simulation = createSimulation(3, 2, Instant.now());
         SimulationRoundRecord round = roundStore.save(SimulationRoundRecord.create(simulation.id(), 1, Instant.now()));
         advance(simulation.id(), round.id());
-        controller.redTeamComplete(simulation.id(), round.id(), "service-token");
+        controller.redTeamComplete(simulation.id(), round.id());
 
-        ResponseEntity<Object> first = controller.detectionComplete(simulation.id(), round.id(), "service-token");
-        ResponseEntity<Object> retry = controller.detectionComplete(simulation.id(), round.id(), "service-token");
+        ResponseEntity<Object> first = controller.detectionComplete(simulation.id(), round.id());
+        ResponseEntity<Object> retry = controller.detectionComplete(simulation.id(), round.id());
 
         assertThat(((SimulationRoundResponse) first.getBody()).status()).isEqualTo("BLUE_TEAM_RUNNING");
         assertThat(((SimulationRoundResponse) retry.getBody()).status()).isEqualTo("BLUE_TEAM_RUNNING");
@@ -180,11 +178,11 @@ class RoundControllerTest {
         SimulationRecord simulation = createSimulation(3, 2, Instant.now());
         SimulationRoundRecord round = roundStore.save(SimulationRoundRecord.create(simulation.id(), 1, Instant.now()));
         advance(simulation.id(), round.id());
-        controller.redTeamComplete(simulation.id(), round.id(), "service-token");
-        controller.detectionComplete(simulation.id(), round.id(), "service-token");
+        controller.redTeamComplete(simulation.id(), round.id());
+        controller.detectionComplete(simulation.id(), round.id());
 
-        ResponseEntity<Object> first = controller.blueTeamComplete(simulation.id(), round.id(), "service-token");
-        ResponseEntity<Object> retry = controller.blueTeamComplete(simulation.id(), round.id(), "service-token");
+        ResponseEntity<Object> first = controller.blueTeamComplete(simulation.id(), round.id());
+        ResponseEntity<Object> retry = controller.blueTeamComplete(simulation.id(), round.id());
 
         assertThat(((SimulationRoundResponse) first.getBody()).status()).isEqualTo("VERIFYING");
         assertThat(((SimulationRoundResponse) retry.getBody()).status()).isEqualTo("VERIFYING");
@@ -197,28 +195,19 @@ class RoundControllerTest {
     void verificationCompletionIsStageSpecificAndIdempotent() {
         SimulationRecord simulation = createSimulation(3, 2, Instant.now());
         SimulationRoundRecord round = roundStore.save(SimulationRoundRecord.create(simulation.id(), 1, Instant.now()));
-        controller.advance(simulation.id(), round.id(), "service-token");
-        controller.redTeamComplete(simulation.id(), round.id(), "service-token");
-        controller.detectionComplete(simulation.id(), round.id(), "service-token");
-        controller.blueTeamComplete(simulation.id(), round.id(), "service-token");
+        controller.advance(simulation.id(), round.id());
+        controller.redTeamComplete(simulation.id(), round.id());
+        controller.detectionComplete(simulation.id(), round.id());
+        controller.blueTeamComplete(simulation.id(), round.id());
 
-        ResponseEntity<Object> first = controller.verificationComplete(simulation.id(), round.id(), "service-token");
-        ResponseEntity<Object> retry = controller.verificationComplete(simulation.id(), round.id(), "service-token");
+        ResponseEntity<Object> first = controller.verificationComplete(simulation.id(), round.id());
+        ResponseEntity<Object> retry = controller.verificationComplete(simulation.id(), round.id());
 
         assertThat(((SimulationRoundResponse) first.getBody()).status()).isEqualTo("SCORING");
         assertThat(((SimulationRoundResponse) retry.getBody()).status()).isEqualTo("SCORING");
         assertThat(outboxStore.findBySimulationId(simulation.id()).stream()
                 .filter(event -> "simulation.round.scoring.requested".equals(event.eventType())))
                 .hasSize(1);
-    }
-
-    @Test
-    void redTeamCompletionRequiresServiceToken() {
-        SimulationRecord simulation = createSimulation(3, 2, Instant.now());
-        SimulationRoundRecord round = roundStore.save(SimulationRoundRecord.create(simulation.id(), 1, Instant.now()));
-
-        assertThat(controller.redTeamComplete(simulation.id(), round.id(), null).getStatusCode())
-                .isEqualTo(HttpStatus.UNAUTHORIZED);
     }
 
     private void assertTerminal(RoundCompletionRequest request, String status, String reason) {
@@ -248,19 +237,19 @@ class RoundControllerTest {
     }
 
     private SimulationRoundResponse advance(UUID simulationId, UUID roundId) {
-        return (SimulationRoundResponse) controller.advance(simulationId, roundId, "service-token").getBody();
+        return (SimulationRoundResponse) controller.advance(simulationId, roundId).getBody();
     }
 
     private void advanceToScoring(UUID simulationId, UUID roundId) {
-        controller.advance(simulationId, roundId, "service-token");
-        controller.advance(simulationId, roundId, "service-token");
-        controller.advance(simulationId, roundId, "service-token");
-        controller.advance(simulationId, roundId, "service-token");
-        controller.advance(simulationId, roundId, "service-token");
+        controller.advance(simulationId, roundId);
+        controller.advance(simulationId, roundId);
+        controller.advance(simulationId, roundId);
+        controller.advance(simulationId, roundId);
+        controller.advance(simulationId, roundId);
     }
 
     private RoundCompletionResponse complete(UUID simulationId, UUID roundId, RoundCompletionRequest request) {
-        return (RoundCompletionResponse) controller.complete(simulationId, roundId, "service-token", request).getBody();
+        return (RoundCompletionResponse) controller.complete(simulationId, roundId, request).getBody();
     }
 
     private RoundCompletionRequest outcome(int findings, boolean fixed, boolean unsafe, boolean available, boolean policy) {

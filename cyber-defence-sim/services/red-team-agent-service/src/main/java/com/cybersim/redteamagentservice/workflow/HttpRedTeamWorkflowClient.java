@@ -4,6 +4,7 @@ import com.cybersim.shared.dto.PolicyDecisionResponse;
 import com.cybersim.shared.dto.PolicyEvaluationRequest;
 import com.cybersim.shared.dto.SimulationResponse;
 import com.cybersim.shared.dto.VulnerabilityCreateRequest;
+import com.cybersim.shared.security.ServiceJwtSupport;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.stereotype.Component;
@@ -24,12 +25,21 @@ class HttpRedTeamWorkflowClient implements RedTeamWorkflowClient {
             @Value("${red-team.policy-base-url}") String policyUrl,
             @Value("${red-team.vulnerability-base-url}") String vulnerabilityUrl,
             @Value("${red-team.target-base-url}") String targetUrl,
-            @Value("${red-team.service-auth-token}") String serviceToken
+            @Value("${service-jwt.secret}") String serviceJwtSecret,
+            @Value("${service-jwt.issuer}") String serviceJwtIssuer
     ) {
-        simulationClient = client(simulationUrl, serviceToken);
-        policyClient = client(policyUrl, serviceToken);
-        vulnerabilityClient = client(vulnerabilityUrl, serviceToken);
-        targetClient = client(targetUrl, serviceToken);
+        ServiceJwtSupport.TokenIssuer tokenIssuer = ServiceJwtSupport.issuer(serviceJwtSecret, serviceJwtIssuer,
+                "red-team-agent-service", "SERVICE_RED_TEAM", "simulation-orchestrator-service");
+        simulationClient = RestClient.builder().baseUrl(simulationUrl)
+                .requestInterceptor((request, body, execution) -> {
+                    request.getHeaders().setBearerAuth(tokenIssuer.issue());
+                    return execution.execute(request, body);
+                }).build();
+        policyClient = client(policyUrl);
+        vulnerabilityClient = client(vulnerabilityUrl);
+        ServiceJwtSupport.TokenIssuer targetTokenIssuer = ServiceJwtSupport.issuer(serviceJwtSecret, serviceJwtIssuer,
+                "red-team-agent-service", "SERVICE_RED_TEAM", "target-system-service");
+        targetClient = serviceJwtClient(targetUrl, targetTokenIssuer);
     }
 
     @Override
@@ -63,7 +73,14 @@ class HttpRedTeamWorkflowClient implements RedTeamWorkflowClient {
                 simulationId, roundId).retrieve().toBodilessEntity();
     }
 
-    private static RestClient client(String baseUrl, String serviceToken) {
-        return RestClient.builder().baseUrl(baseUrl).defaultHeader("X-Service-Token", serviceToken).build();
+    private static RestClient client(String baseUrl) {
+        return RestClient.builder().baseUrl(baseUrl).build();
+    }
+
+    private static RestClient serviceJwtClient(String baseUrl, ServiceJwtSupport.TokenIssuer tokenIssuer) {
+        return RestClient.builder().baseUrl(baseUrl).requestInterceptor((request, body, execution) -> {
+            request.getHeaders().setBearerAuth(tokenIssuer.issue());
+            return execution.execute(request, body);
+        }).build();
     }
 }

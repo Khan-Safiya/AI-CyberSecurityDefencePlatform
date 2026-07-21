@@ -32,21 +32,12 @@ class RemediationVerificationControllerTest {
                 UUID.fromString("00000000-0000-0000-0000-000000000101"), "AUTH_REQUIRED", "Require auth"))
                 .approve().applied(true, "Applied");
         remediationId = store.save(applied).id();
-        controller = new RemediationVerificationController(store, "service-token");
-    }
-
-    @Test
-    void requiresServiceToken() {
-        ResponseEntity<Object> response = controller.recordVerification(remediationId, null,
-                new VerificationOutcomeRequest("PASSED", "Patch observed"));
-
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
-        assertThat(response.getBody()).isInstanceOf(ApiErrorResponse.class);
+        controller = new RemediationVerificationController(store);
     }
 
     @Test
     void passedOutcomeMarksAppliedRemediationVerified() {
-        ResponseEntity<Object> response = controller.recordVerification(remediationId, "service-token",
+        ResponseEntity<Object> response = controller.recordVerification(remediationId,
                 new VerificationOutcomeRequest("PASSED", "Patch observed"));
 
         RemediationResponse body = (RemediationResponse) response.getBody();

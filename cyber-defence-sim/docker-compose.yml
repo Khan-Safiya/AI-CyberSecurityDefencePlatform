@@ -68,13 +68,38 @@ services:
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS:-guest}
       JWT_ISSUER: ${JWT_ISSUER:-cybersim-local}
       JWT_SECRET: ${JWT_SECRET:-local-development-only-change-me}
-      SERVICE_AUTH_TOKEN: ${SERVICE_AUTH_TOKEN:-local-service-token}
-    depends_on: [postgres, redis, rabbitmq]
+      JWT_ACTIVE_KEY_ID: ${JWT_ACTIVE_KEY_ID:-local-current}
+      JWT_PREVIOUS_SECRET: ${JWT_PREVIOUS_SECRET:-}
+      SERVICE_JWT_SECRET: ${SERVICE_JWT_SECRET:-local-service-jwt-secret-change-me-now}
+      SERVICE_JWT_ISSUER: ${SERVICE_JWT_ISSUER:-cybersim-services-local}
+    depends_on:
+      postgres:
+        condition: service_started
+      redis:
+        condition: service_started
+      rabbitmq:
+        condition: service_started
+      identity-service:
+        condition: service_started
+      target-registry-service:
+        condition: service_started
+      simulation-orchestrator-service:
+        condition: service_started
+      dashboard-backend-service:
+        condition: service_started
 
   identity-service:
     build: { context: ., args: { SERVICE: identity-service } }
     ports: ["8101:8080"]
-    environment: *service-env
+    environment:
+      <<: *service-env
+      JWT_ACCESS_TOKEN_LIFETIME: ${JWT_ACCESS_TOKEN_LIFETIME:-15m}
+      DEMO_ADMIN_PASSWORD: ${DEMO_ADMIN_PASSWORD:-local-admin-change-me}
+      DEMO_OPERATOR_PASSWORD: ${DEMO_OPERATOR_PASSWORD:-local-operator-change-me}
+      DEMO_AUDITOR_PASSWORD: ${DEMO_AUDITOR_PASSWORD:-local-auditor-change-me}
+    depends_on:
+      postgres:
+        condition: service_healthy
 
   target-registry-service:
     build: { context: ., args: { SERVICE: target-registry-service } }

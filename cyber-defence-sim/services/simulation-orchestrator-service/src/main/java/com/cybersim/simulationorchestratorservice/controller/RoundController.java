@@ -11,7 +11,6 @@ import com.cybersim.simulationorchestratorservice.outbox.OutboxStore;
 import com.cybersim.simulationorchestratorservice.store.SimulationRoundStore;
 import com.cybersim.simulationorchestratorservice.store.SimulationStore;
 import jakarta.validation.Valid;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.transaction.annotation.Transactional;
@@ -32,7 +31,6 @@ import java.util.UUID;
 public class RoundController {
     private final SimulationStore simulationStore;
     private final SimulationRoundStore roundStore;
-    private final String expectedServiceToken;
     private final OutboxStore outboxStore;
     private final OutboxEventFactory outboxEventFactory;
 
@@ -40,14 +38,12 @@ public class RoundController {
             SimulationStore simulationStore,
             SimulationRoundStore roundStore,
             OutboxStore outboxStore,
-            OutboxEventFactory outboxEventFactory,
-            @Value("${simulation.service-auth-token}") String expectedServiceToken
+            OutboxEventFactory outboxEventFactory
     ) {
         this.simulationStore = simulationStore;
         this.roundStore = roundStore;
         this.outboxStore = outboxStore;
         this.outboxEventFactory = outboxEventFactory;
-        this.expectedServiceToken = expectedServiceToken;
     }
 
     @GetMapping("/simulations/{simulationId}/rounds")
@@ -59,15 +55,11 @@ public class RoundController {
     @Transactional
     public ResponseEntity<Object> advance(
             @PathVariable UUID simulationId,
-            @PathVariable UUID roundId,
-            @RequestHeader(value = "X-Service-Token", required = false) String serviceToken
+            @PathVariable UUID roundId
     ) {
         SimulationRecord simulation = simulationStore.findById(simulationId).orElse(null);
         SimulationRoundRecord round = roundStore.findById(roundId).orElse(null);
         String path = roundPath(simulationId, roundId, "advance");
-        if (!validToken(serviceToken)) {
-            return ApiErrors.response(HttpStatus.UNAUTHORIZED, "Valid service-to-service token required", path);
-        }
         if (simulation == null || round == null || !simulationId.equals(round.simulationId())) {
             return ApiErrors.response(HttpStatus.NOT_FOUND, "Simulation round not found", path);
         }
@@ -96,13 +88,9 @@ public class RoundController {
     @Transactional
     public ResponseEntity<Object> redTeamComplete(
             @PathVariable UUID simulationId,
-            @PathVariable UUID roundId,
-            @RequestHeader(value = "X-Service-Token", required = false) String serviceToken
+            @PathVariable UUID roundId
     ) {
         String path = roundPath(simulationId, roundId, "red-team-complete");
-        if (!validToken(serviceToken)) {
-            return ApiErrors.response(HttpStatus.UNAUTHORIZED, "Valid service-to-service token required", path);
-        }
         SimulationRecord simulation = simulationStore.findById(simulationId).orElse(null);
         SimulationRoundRecord round = roundStore.findById(roundId).orElse(null);
         if (simulation == null || round == null || !simulationId.equals(round.simulationId())) {
@@ -129,13 +117,9 @@ public class RoundController {
     @Transactional
     public ResponseEntity<Object> detectionComplete(
             @PathVariable UUID simulationId,
-            @PathVariable UUID roundId,
-            @RequestHeader(value = "X-Service-Token", required = false) String serviceToken
+            @PathVariable UUID roundId
     ) {
         String path = roundPath(simulationId, roundId, "detection-complete");
-        if (!validToken(serviceToken)) {
-            return ApiErrors.response(HttpStatus.UNAUTHORIZED, "Valid service-to-service token required", path);
-        }
         SimulationRecord simulation = simulationStore.findById(simulationId).orElse(null);
         SimulationRoundRecord round = roundStore.findById(roundId).orElse(null);
         if (simulation == null || round == null || !simulationId.equals(round.simulationId())) {
@@ -162,13 +146,9 @@ public class RoundController {
     @Transactional
     public ResponseEntity<Object> blueTeamComplete(
             @PathVariable UUID simulationId,
-            @PathVariable UUID roundId,
-            @RequestHeader(value = "X-Service-Token", required = false) String serviceToken
+            @PathVariable UUID roundId
     ) {
         String path = roundPath(simulationId, roundId, "blue-team-complete");
-        if (!validToken(serviceToken)) {
-            return ApiErrors.response(HttpStatus.UNAUTHORIZED, "Valid service-to-service token required", path);
-        }
         SimulationRecord simulation = simulationStore.findById(simulationId).orElse(null);
         SimulationRoundRecord round = roundStore.findById(roundId).orElse(null);
         if (simulation == null || round == null || !simulationId.equals(round.simulationId())) {
@@ -195,13 +175,9 @@ public class RoundController {
     @Transactional
     public ResponseEntity<Object> verificationComplete(
             @PathVariable UUID simulationId,
-            @PathVariable UUID roundId,
-            @RequestHeader(value = "X-Service-Token", required = false) String serviceToken
+            @PathVariable UUID roundId
     ) {
         String path = roundPath(simulationId, roundId, "verification-complete");
-        if (!validToken(serviceToken)) {
-            return ApiErrors.response(HttpStatus.UNAUTHORIZED, "Valid service-to-service token required", path);
-        }
         SimulationRecord simulation = simulationStore.findById(simulationId).orElse(null);
         SimulationRoundRecord round = roundStore.findById(roundId).orElse(null);
         if (simulation == null || round == null || !simulationId.equals(round.simulationId())) {
@@ -230,15 +206,11 @@ public class RoundController {
     public ResponseEntity<Object> complete(
             @PathVariable UUID simulationId,
             @PathVariable UUID roundId,
-            @RequestHeader(value = "X-Service-Token", required = false) String serviceToken,
             @Valid @RequestBody RoundCompletionRequest request
     ) {
         SimulationRecord simulation = simulationStore.findById(simulationId).orElse(null);
         SimulationRoundRecord round = roundStore.findById(roundId).orElse(null);
         String path = roundPath(simulationId, roundId, "complete");
-        if (!validToken(serviceToken)) {
-            return ApiErrors.response(HttpStatus.UNAUTHORIZED, "Valid service-to-service token required", path);
-        }
         if (simulation == null || round == null || !simulationId.equals(round.simulationId())) {
             return ApiErrors.response(HttpStatus.NOT_FOUND, "Simulation round not found", path);
         }
@@ -346,9 +318,6 @@ public class RoundController {
         return "/simulations/" + simulationId + "/rounds/" + roundId + "/" + action;
     }
 
-    private boolean validToken(String serviceToken) {
-        return serviceToken != null && !serviceToken.isBlank() && serviceToken.equals(expectedServiceToken);
-    }
 
     private record StopDecision(String status, String reason) {
     }

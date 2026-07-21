@@ -9,14 +9,12 @@ import com.cybersim.shared.dto.SimulationScoreResponse;
 import com.cybersim.shared.observability.ApiErrors;
 import jakarta.validation.Valid;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -25,11 +23,8 @@ import java.util.UUID;
 @RestController
 public class ScoringController {
     private final ScoreEventStore store;
-    private final String expectedServiceToken;
-
-    public ScoringController(ScoreEventStore store, @Value("${scoring.service-auth-token}") String expectedServiceToken) {
+    public ScoringController(ScoreEventStore store) {
         this.store = store;
-        this.expectedServiceToken = expectedServiceToken;
     }
 
     @GetMapping("/simulations/{id}/scores")
@@ -51,13 +46,8 @@ public class ScoringController {
 
     @PostMapping("/internal/score-events")
     public ResponseEntity<Object> append(
-            @RequestHeader(value = "X-Service-Token", required = false) String serviceToken,
             @Valid @RequestBody ScoreEventCreateRequest request
     ) {
-        if (!validToken(serviceToken)) {
-            return ApiErrors.response(HttpStatus.UNAUTHORIZED, "Valid service-to-service token required",
-                    "/internal/score-events");
-        }
         ScoreAppendResult result;
         try {
             result = store.append(ScoreEventRecord.from(request));
@@ -78,7 +68,4 @@ public class ScoringController {
         return events.stream().filter(event -> team.equals(event.team())).mapToLong(ScoreEventRecord::points).sum();
     }
 
-    private boolean validToken(String serviceToken) {
-        return serviceToken != null && !serviceToken.isBlank() && serviceToken.equals(expectedServiceToken);
-    }
 }

@@ -1,6 +1,7 @@
 package com.cybersim.targetregistryservice.controller;
 
 import com.cybersim.shared.dto.ApiErrorResponse;
+import com.cybersim.shared.dto.OwnershipVerificationRequest;
 import com.cybersim.shared.dto.TargetMode;
 import com.cybersim.shared.dto.TargetRegistrationRequest;
 import com.cybersim.shared.dto.TargetResponse;
@@ -64,7 +65,8 @@ class TargetRegistryControllerTest {
         assertThat(target.status()).isEqualTo("DISABLED");
         assertThat(target.ownershipVerificationStatus()).isEqualTo("FAILED");
 
-        ResponseEntity<Object> verified = controller.verify(target.id());
+        ResponseEntity<Object> verified = controller.verify(target.id(),
+                new OwnershipVerificationRequest(target.verificationToken()));
 
         assertThat(verified.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         assertStandardError(verified, 400, "Bad Request", "/targets/" + target.id() + "/verify-ownership");
@@ -89,7 +91,8 @@ class TargetRegistryControllerTest {
 
         TargetResponse target = (TargetResponse) controller.create(request).getBody();
 
-        ResponseEntity<Object> verified = controller.verify(target.id());
+        ResponseEntity<Object> verified = controller.verify(target.id(),
+                new OwnershipVerificationRequest(target.verificationToken()));
 
         assertThat(verified.getStatusCode()).isEqualTo(HttpStatus.OK);
         TargetResponse verifiedTarget = (TargetResponse) verified.getBody();
@@ -158,7 +161,36 @@ class TargetRegistryControllerTest {
         TargetResponse target = (TargetResponse) controller.create(request).getBody();
 
         assertThat(target.status()).isEqualTo("DISABLED");
-        assertThat(controller.verify(target.id()).getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(controller.verify(target.id(), new OwnershipVerificationRequest(target.verificationToken())).getStatusCode())
+                .isEqualTo(HttpStatus.BAD_REQUEST);
+    }
+
+    @Test
+    void externalTargetCannotBeVerifiedWithWrongToken() {
+        TargetRegistrationRequest request = new TargetRegistrationRequest(
+                "Authorized staging target",
+                "Owned staging app",
+                TargetMode.EXTERNAL_STAGING_TARGET,
+                "https://staging.example.com",
+                "STAGING",
+                List.of("staging.example.com"),
+                List.of("/demo/**"),
+                List.of(),
+                List.of("GET"),
+                10,
+                true
+        );
+
+        TargetResponse target = (TargetResponse) controller.create(request).getBody();
+
+        ResponseEntity<Object> verified = controller.verify(target.id(),
+                new OwnershipVerificationRequest("wrong-token"));
+
+        assertThat(verified.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertStandardError(verified, 400, "Bad Request", "/targets/" + target.id() + "/verify-ownership");
+        TargetResponse unchanged = (TargetResponse) controller.get(target.id()).getBody();
+        assertThat(unchanged.status()).isEqualTo("PENDING_VERIFICATION");
+        assertThat(unchanged.ownershipVerificationStatus()).isEqualTo("PENDING");
     }
 
     @Test

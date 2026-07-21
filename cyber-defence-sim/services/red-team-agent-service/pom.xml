@@ -4,6 +4,13 @@
   <artifactId>red-team-agent-service</artifactId>
   <properties><start-class>com.cybersim.redteamagentservice.RedTeamAgentServiceApplication</start-class></properties>
   <dependencies>
+    <dependency>
+      <groupId>com.cybersim</groupId><artifactId>common-security</artifactId><version>${project.version}</version>
+      <exclusions>
+        <exclusion><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-oauth2-resource-server</artifactId></exclusion>
+      </exclusions>
+    </dependency>
+    <dependency><groupId>org.springframework.security</groupId><artifactId>spring-security-oauth2-jose</artifactId></dependency>
     <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-amqp</artifactId></dependency>
     <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-data-jpa</artifactId></dependency>
     <dependency><groupId>org.flywaydb</groupId><artifactId>flyway-core</artifactId></dependency>

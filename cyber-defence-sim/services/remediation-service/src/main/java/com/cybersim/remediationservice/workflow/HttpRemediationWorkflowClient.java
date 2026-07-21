@@ -4,6 +4,7 @@ import com.cybersim.shared.dto.DetectionEventResponse;
 import com.cybersim.shared.dto.PolicyDecisionResponse;
 import com.cybersim.shared.dto.PolicyEvaluationRequest;
 import com.cybersim.shared.dto.VulnerabilityResponse;
+import com.cybersim.shared.security.ServiceJwtSupport;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.stereotype.Component;
@@ -24,12 +25,19 @@ class HttpRemediationWorkflowClient implements RemediationWorkflowClient {
             @Value("${remediation.detection-base-url}") String detectionUrl,
             @Value("${remediation.policy-base-url}") String policyUrl,
             @Value("${remediation.simulation-base-url}") String simulationUrl,
-            @Value("${remediation.service-auth-token}") String serviceToken
+            @Value("${service-jwt.secret}") String serviceJwtSecret,
+            @Value("${service-jwt.issuer}") String serviceJwtIssuer
     ) {
-        vulnerabilityClient = client(vulnerabilityUrl, serviceToken);
-        detectionClient = client(detectionUrl, serviceToken);
-        policyClient = client(policyUrl, serviceToken);
-        simulationClient = client(simulationUrl, serviceToken);
+        vulnerabilityClient = client(vulnerabilityUrl);
+        detectionClient = client(detectionUrl);
+        policyClient = client(policyUrl);
+        ServiceJwtSupport.TokenIssuer tokenIssuer = ServiceJwtSupport.issuer(serviceJwtSecret, serviceJwtIssuer,
+                "remediation-service", "SERVICE_REMEDIATION", "simulation-orchestrator-service");
+        simulationClient = RestClient.builder().baseUrl(simulationUrl)
+                .requestInterceptor((request, body, execution) -> {
+                    request.getHeaders().setBearerAuth(tokenIssuer.issue());
+                    return execution.execute(request, body);
+                }).build();
     }
 
     @Override
@@ -61,7 +69,7 @@ class HttpRemediationWorkflowClient implements RemediationWorkflowClient {
                 simulationId, roundId).retrieve().toBodilessEntity();
     }
 
-    private static RestClient client(String baseUrl, String serviceToken) {
-        return RestClient.builder().baseUrl(baseUrl).defaultHeader("X-Service-Token", serviceToken).build();
+    private static RestClient client(String baseUrl) {
+        return RestClient.builder().baseUrl(baseUrl).build();
     }
 }

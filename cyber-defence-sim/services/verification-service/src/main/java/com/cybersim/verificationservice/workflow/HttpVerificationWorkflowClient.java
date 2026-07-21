@@ -2,6 +2,7 @@ package com.cybersim.verificationservice.workflow;
 
 import com.cybersim.shared.dto.RemediationResponse;
 import com.cybersim.shared.dto.VerificationOutcomeRequest;
+import com.cybersim.shared.security.ServiceJwtSupport;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
@@ -27,7 +28,8 @@ class HttpVerificationWorkflowClient implements VerificationWorkflowClient {
     );
 
     private final RestClient remediationClient;
-    private final RestClient vulnerabilityClient;
+    private final RestClient remediationSyncClient;
+    private final RestClient vulnerabilitySyncClient;
     private final RestClient targetClient;
     private final RestClient simulationClient;
 
@@ -37,16 +39,30 @@ class HttpVerificationWorkflowClient implements VerificationWorkflowClient {
             @Value("${verification.vulnerability-base-url}") String vulnerabilityBaseUrl,
             @Value("${verification.target-system-base-url}") String targetBaseUrl,
             @Value("${verification.simulation-base-url}") String simulationBaseUrl,
-            @Value("${verification.service-auth-token}") String serviceAuthToken
+            @Value("${service-jwt.secret}") String serviceJwtSecret,
+            @Value("${service-jwt.issuer}") String serviceJwtIssuer
     ) {
-        this(client(remediationBaseUrl, serviceAuthToken), client(vulnerabilityBaseUrl, serviceAuthToken),
-                client(targetBaseUrl, serviceAuthToken), client(simulationBaseUrl, serviceAuthToken));
+        this(client(remediationBaseUrl),
+                serviceJwtClient(remediationBaseUrl, serviceJwtSecret, serviceJwtIssuer,
+                        "SERVICE_VERIFICATION", "remediation-service"),
+                serviceJwtClient(vulnerabilityBaseUrl, serviceJwtSecret, serviceJwtIssuer,
+                        "SERVICE_VERIFICATION", "vulnerability-registry-service"),
+                serviceJwtClient(targetBaseUrl, serviceJwtSecret, serviceJwtIssuer,
+                        "SERVICE_VERIFICATION", "target-system-service"), serviceJwtClient(simulationBaseUrl,
+                        serviceJwtSecret, serviceJwtIssuer));
     }
 
     HttpVerificationWorkflowClient(RestClient remediationClient, RestClient vulnerabilityClient,
                                    RestClient targetClient, RestClient simulationClient) {
+        this(remediationClient, remediationClient, vulnerabilityClient, targetClient, simulationClient);
+    }
+
+    private HttpVerificationWorkflowClient(RestClient remediationClient, RestClient remediationSyncClient,
+                                           RestClient vulnerabilitySyncClient, RestClient targetClient,
+                                           RestClient simulationClient) {
         this.remediationClient = remediationClient;
-        this.vulnerabilityClient = vulnerabilityClient;
+        this.remediationSyncClient = remediationSyncClient;
+        this.vulnerabilitySyncClient = vulnerabilitySyncClient;
         this.targetClient = targetClient;
         this.simulationClient = simulationClient;
     }
@@ -97,9 +113,9 @@ class HttpVerificationWorkflowClient implements VerificationWorkflowClient {
     public boolean synchronizeOutcome(RemediationResponse remediation, VerificationCheckResult result) {
         VerificationOutcomeRequest request = new VerificationOutcomeRequest(result.status(), result.evidenceSummary());
         try {
-            remediationClient.post().uri("/internal/remediations/{id}/verification-result", remediation.id())
+            remediationSyncClient.post().uri("/internal/remediations/{id}/verification-result", remediation.id())
                     .body(request).retrieve().toBodilessEntity();
-            vulnerabilityClient.post().uri("/internal/vulnerabilities/{id}/verification-result", remediation.vulnerabilityId())
+            vulnerabilitySyncClient.post().uri("/internal/vulnerabilities/{id}/verification-result", remediation.vulnerabilityId())
                     .body(request).retrieve().toBodilessEntity();
             return true;
         } catch (RestClientException exception) {
@@ -113,7 +129,22 @@ class HttpVerificationWorkflowClient implements VerificationWorkflowClient {
                 simulationId, roundId).retrieve().toBodilessEntity();
     }
 
-    private static RestClient client(String baseUrl, String serviceAuthToken) {
-        return RestClient.builder().baseUrl(baseUrl).defaultHeader("X-Service-Token", serviceAuthToken).build();
+    private static RestClient client(String baseUrl) {
+        return RestClient.builder().baseUrl(baseUrl).build();
+    }
+
+    private static RestClient serviceJwtClient(String baseUrl, String secret, String issuer) {
+        return serviceJwtClient(baseUrl, secret, issuer, "SERVICE_VERIFICATION",
+                "simulation-orchestrator-service");
+    }
+
+    private static RestClient serviceJwtClient(String baseUrl, String secret, String issuer, String role,
+                                               String audience) {
+        ServiceJwtSupport.TokenIssuer tokenIssuer = ServiceJwtSupport.issuer(secret, issuer,
+                "verification-service", role, audience);
+        return RestClient.builder().baseUrl(baseUrl).requestInterceptor((request, body, execution) -> {
+            request.getHeaders().setBearerAuth(tokenIssuer.issue());
+            return execution.execute(request, body);
+        }).build();
     }
 }

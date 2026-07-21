@@ -1,5 +1,6 @@
 package com.cybersim.targetregistryservice.controller;
 
+import com.cybersim.shared.dto.OwnershipVerificationRequest;
 import com.cybersim.shared.dto.TargetMode;
 import com.cybersim.shared.dto.TargetRegistrationRequest;
 import com.cybersim.shared.dto.TargetResponse;
@@ -12,6 +13,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.List;
 import java.util.UUID;
 
@@ -58,7 +61,8 @@ public class TargetRegistryController {
     }
 
     @PostMapping({"/targets/{id}/verify-ownership", "/integration/targets/{id}/verify-ownership"})
-    public ResponseEntity<Object> verify(@PathVariable UUID id) {
+    public ResponseEntity<Object> verify(@PathVariable UUID id,
+                                         @Valid @RequestBody OwnershipVerificationRequest request) {
         TargetRecord target = targetStore.findById(id).orElse(null);
         if (target == null) {
             return error(HttpStatus.NOT_FOUND, "Target not found: " + id, "/targets/" + id + "/verify-ownership");
@@ -68,6 +72,9 @@ public class TargetRegistryController {
         }
         if (isProductionEnvironment(target.environmentType())) {
             return error(HttpStatus.BAD_REQUEST, "Production targets are blocked by default", "/targets/" + id + "/verify-ownership");
+        }
+        if (!tokenMatches(target.verificationToken(), request.verificationToken())) {
+            return error(HttpStatus.BAD_REQUEST, "Ownership verification token does not match", "/targets/" + id + "/verify-ownership");
         }
         TargetRecord verified = targetStore.save(target.withState("VERIFIED", "ACTIVE"));
         return ResponseEntity.ok(verified.toResponse());
@@ -90,5 +97,12 @@ public class TargetRegistryController {
     private boolean isProductionEnvironment(String environmentType) {
         return "PRODUCTION".equalsIgnoreCase(environmentType)
                 || "PRODUCTION_BLOCKED".equalsIgnoreCase(environmentType);
+    }
+
+    private boolean tokenMatches(String expected, String actual) {
+        return MessageDigest.isEqual(
+                expected.getBytes(StandardCharsets.UTF_8),
+                actual.getBytes(StandardCharsets.UTF_8)
+        );
     }
 }

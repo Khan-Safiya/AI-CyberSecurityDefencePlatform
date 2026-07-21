@@ -1,1 +1,2 @@
 com.cybersim.shared.observability.ObservabilityAutoConfiguration
+com.cybersim.shared.observability.OpenApiSecurityAutoConfiguration

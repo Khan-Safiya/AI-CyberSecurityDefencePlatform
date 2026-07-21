@@ -18,8 +18,8 @@ class ScoringStageProcessorTest {
         RoundCompletionRequest first=p.score(S,R,sim,List.of(v),List.of(d),List.of(m),List.of(x));
         RoundCompletionRequest retry=p.score(S,R,sim,List.of(v),List.of(d),List.of(m),List.of(x));
         assertThat(first.newFindingsCount()).isEqualTo(1);assertThat(first.remediatedFindingsCount()).isEqualTo(1);assertThat(first.verifiedFixesCount()).isEqualTo(1);
-        assertThat(first.redTeamScore()).isEqualTo(50);assertThat(first.blueTeamScore()).isEqualTo(115);assertThat(first.riskScoreAfter()).isZero();assertThat(first.allCriticalAndHighFixed()).isTrue();
-        assertThat(retry).isEqualTo(first);assertThat(store.events).hasSize(5);
+        assertThat(first.redTeamScore()).isEqualTo(50);assertThat(first.blueTeamScore()).isEqualTo(135);assertThat(first.riskScoreAfter()).isZero();assertThat(first.allCriticalAndHighFixed()).isTrue();
+        assertThat(retry).isEqualTo(first);assertThat(store.events).hasSize(6);
     }
     static class MemoryStore implements ScoreEventStore{
         final List<ScoreEventRecord> events=new ArrayList<>();

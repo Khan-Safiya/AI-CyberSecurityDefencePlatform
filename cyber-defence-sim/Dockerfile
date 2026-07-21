@@ -4,7 +4,8 @@ WORKDIR /workspace
 COPY pom.xml .
 COPY shared shared
 COPY services services
-RUN mvn -pl services/${SERVICE} -am package -DskipTests
+RUN --mount=type=cache,target=/root/.m2 \
+    mvn -pl services/${SERVICE} -am package -DskipTests
 
 FROM eclipse-temurin:21-jre
 ARG SERVICE

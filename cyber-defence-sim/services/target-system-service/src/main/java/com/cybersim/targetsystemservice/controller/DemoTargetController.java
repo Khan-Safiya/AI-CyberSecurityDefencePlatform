@@ -1,7 +1,6 @@
 package com.cybersim.targetsystemservice.controller;
 
 import com.cybersim.shared.observability.ApiErrors;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -13,10 +12,7 @@ import java.util.Map;
 @RestController
 public class DemoTargetController {
     private final Map<String, Boolean> patched = new LinkedHashMap<>();
-    private final String expectedServiceToken;
-
-    public DemoTargetController(@Value("${SERVICE_AUTH_TOKEN:local-service-token}") String expectedServiceToken) {
-        this.expectedServiceToken = expectedServiceToken;
+    public DemoTargetController() {
         patched.put("auth-required", false);
         patched.put("object-authorization", false);
         patched.put("rate-limit", false);
@@ -63,10 +59,7 @@ public class DemoTargetController {
     }
 
     @PostMapping("/internal/patches/{patchName}")
-    public ResponseEntity<Object> applyPatch(@PathVariable String patchName, @RequestHeader(value = "X-Service-Token", required = false) String serviceToken) {
-        if (!validServiceToken(serviceToken)) {
-            return error(HttpStatus.UNAUTHORIZED, "Valid service-to-service token required", "/internal/patches/" + patchName);
-        }
+    public ResponseEntity<Object> applyPatch(@PathVariable String patchName) {
         if (!patched.containsKey(patchName)) {
             return error(HttpStatus.NOT_FOUND, "Unknown sandbox patch: " + patchName, "/internal/patches/" + patchName);
         }
@@ -75,10 +68,7 @@ public class DemoTargetController {
     }
 
     @PostMapping("/internal/patches/{patchName}/rollback")
-    public ResponseEntity<Object> rollbackPatch(@PathVariable String patchName, @RequestHeader(value = "X-Service-Token", required = false) String serviceToken) {
-        if (!validServiceToken(serviceToken)) {
-            return error(HttpStatus.UNAUTHORIZED, "Valid service-to-service token required", "/internal/patches/" + patchName + "/rollback");
-        }
+    public ResponseEntity<Object> rollbackPatch(@PathVariable String patchName) {
         if (!patched.containsKey(patchName)) {
             return error(HttpStatus.NOT_FOUND, "Unknown sandbox patch: " + patchName, "/internal/patches/" + patchName + "/rollback");
         }
@@ -87,15 +77,8 @@ public class DemoTargetController {
     }
 
     @GetMapping("/internal/patches/status")
-    public ResponseEntity<Object> status(@RequestHeader(value = "X-Service-Token", required = false) String serviceToken) {
-        if (!validServiceToken(serviceToken)) {
-            return error(HttpStatus.UNAUTHORIZED, "Valid service-to-service token required", "/internal/patches/status");
-        }
+    public ResponseEntity<Object> status() {
         return ResponseEntity.ok(Map.copyOf(patched));
-    }
-
-    private boolean validServiceToken(String serviceToken) {
-        return serviceToken != null && !serviceToken.isBlank() && serviceToken.equals(expectedServiceToken);
     }
 
     private ResponseEntity<Object> error(HttpStatus status, String message, String path) {

@@ -32,7 +32,7 @@ class ScoringControllerTest {
     @BeforeEach
     void setUp() {
         store = new InMemoryStore();
-        controller = new ScoringController(store, "service-token");
+        controller = new ScoringController(store);
     }
 
     @Test
@@ -55,7 +55,7 @@ class ScoringControllerTest {
         expectedRules.forEach((scoreType, points) -> {
             ScoreEventCreateRequest request = request(UUID.randomUUID(), scoreType,
                     "RED_UNSAFE_ACTION".equals(scoreType) ? UUID.randomUUID() : null);
-            ResponseEntity<Object> response = controller.append("service-token", request);
+            ResponseEntity<Object> response = controller.append(request);
             ScoreEventResponse event = (ScoreEventResponse) response.getBody();
 
             assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
@@ -69,9 +69,9 @@ class ScoringControllerTest {
         UUID sourceEventId = UUID.randomUUID();
         ScoreEventCreateRequest original = request(sourceEventId, "BLUE_VALID_DETECTION", null);
 
-        ResponseEntity<Object> created = controller.append("service-token", original);
-        ResponseEntity<Object> retry = controller.append("service-token", original);
-        ResponseEntity<Object> conflict = controller.append("service-token",
+        ResponseEntity<Object> created = controller.append(original);
+        ResponseEntity<Object> retry = controller.append(original);
+        ResponseEntity<Object> conflict = controller.append(
                 request(sourceEventId, "BLUE_PATCH_APPLIED", null));
 
         assertThat(created.getStatusCode()).isEqualTo(HttpStatus.CREATED);
@@ -85,10 +85,10 @@ class ScoringControllerTest {
     @Test
     void calculatesTotalsRiskAndBlockedAgentsFromEvents() {
         UUID blockedAgentId = UUID.randomUUID();
-        controller.append("service-token", request(UUID.randomUUID(), "RED_CRITICAL_FINDING", null));
-        controller.append("service-token", request(UUID.randomUUID(), "RED_UNSAFE_ACTION", blockedAgentId));
-        controller.append("service-token", request(UUID.randomUUID(), "BLUE_PATCH_APPLIED", null));
-        controller.append("service-token", request(UUID.randomUUID(), "BLUE_FIX_VERIFIED", null));
+        controller.append(request(UUID.randomUUID(), "RED_CRITICAL_FINDING", null));
+        controller.append(request(UUID.randomUUID(), "RED_UNSAFE_ACTION", blockedAgentId));
+        controller.append(request(UUID.randomUUID(), "BLUE_PATCH_APPLIED", null));
+        controller.append(request(UUID.randomUUID(), "BLUE_FIX_VERIFIED", null));
 
         SimulationScoreResponse scores = controller.scores(SIMULATION_ID);
 
@@ -100,14 +100,10 @@ class ScoringControllerTest {
     }
 
     @Test
-    void rejectsMissingTokenAndUnsafePenaltyWithoutAgent() {
-        ResponseEntity<Object> unauthorized = controller.append(null,
-                request(UUID.randomUUID(), "BLUE_VALID_DETECTION", null));
+    void rejectsUnsafePenaltyWithoutAgent() {
         Validator validator = Validation.buildDefaultValidatorFactory().getValidator();
         ScoreEventCreateRequest unsafeWithoutAgent = request(UUID.randomUUID(), "RED_UNSAFE_ACTION", null);
 
-        assertThat(unauthorized.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
-        assertThat(unauthorized.getBody()).isInstanceOf(ApiErrorResponse.class);
         assertThat(validator.validate(unsafeWithoutAgent)).isNotEmpty();
     }
 

@@ -1,6 +1,7 @@
 package com.cybersim.detectionengineservice.workflow;
 
 import com.cybersim.shared.dto.VulnerabilityResponse;
+import com.cybersim.shared.security.ServiceJwtSupport;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.stereotype.Component;
@@ -17,10 +18,17 @@ class HttpDetectionWorkflowClient implements DetectionWorkflowClient {
     HttpDetectionWorkflowClient(
             @Value("${detection.vulnerability-base-url}") String vulnerabilityUrl,
             @Value("${detection.simulation-base-url}") String simulationUrl,
-            @Value("${detection.service-auth-token}") String serviceToken
+            @Value("${service-jwt.secret}") String serviceJwtSecret,
+            @Value("${service-jwt.issuer}") String serviceJwtIssuer
     ) {
-        vulnerabilityClient = client(vulnerabilityUrl, serviceToken);
-        simulationClient = client(simulationUrl, serviceToken);
+        vulnerabilityClient = RestClient.builder().baseUrl(vulnerabilityUrl).build();
+        ServiceJwtSupport.TokenIssuer tokenIssuer = ServiceJwtSupport.issuer(serviceJwtSecret, serviceJwtIssuer,
+                "detection-engine-service", "SERVICE_DETECTION", "simulation-orchestrator-service");
+        simulationClient = RestClient.builder().baseUrl(simulationUrl)
+                .requestInterceptor((request, body, execution) -> {
+                    request.getHeaders().setBearerAuth(tokenIssuer.issue());
+                    return execution.execute(request, body);
+                }).build();
     }
 
     @Override
@@ -37,7 +45,4 @@ class HttpDetectionWorkflowClient implements DetectionWorkflowClient {
                 simulationId, roundId).retrieve().toBodilessEntity();
     }
 
-    private static RestClient client(String baseUrl, String serviceToken) {
-        return RestClient.builder().baseUrl(baseUrl).defaultHeader("X-Service-Token", serviceToken).build();
-    }
 }

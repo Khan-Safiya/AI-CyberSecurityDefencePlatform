@@ -77,6 +77,24 @@ class SimulationPersistenceIntegrationTest {
     }
 
     @Test
+    void flywaySchemaAcceptsEveryRunningRoundStage() {
+        Instant now = Instant.now();
+        SimulationRecord simulation = new SimulationRecord(
+                UUID.randomUUID(), "Round stages", TargetMode.INTERNAL_SANDBOX,
+                UUID.fromString("00000000-0000-0000-0000-000000000101"), "RUNNING", 1, 1, 60, 1,
+                "LOW", true, 10, 0, 0, 50, null, List.of("simulation.started"), now, null);
+        simulationStore.save(simulation);
+
+        SimulationRoundRecord round = roundStore.save(SimulationRoundRecord.create(simulation.id(), 1, now));
+        for (String expectedStatus : List.of(
+                "RED_TEAM_RUNNING", "DETECTION_RUNNING", "BLUE_TEAM_RUNNING", "VERIFYING", "SCORING")) {
+            round = roundStore.save(round.advance());
+            assertThat(roundStore.findById(round.id())).get()
+                    .extracting(SimulationRoundRecord::status).isEqualTo(expectedStatus);
+        }
+    }
+
+    @Test
     void persistsPendingOutboxEventWithRoundState() {
         UUID simulationId = UUID.randomUUID();
         OutboxEventRecord event = outboxStore.save(outboxEventFactory.create(

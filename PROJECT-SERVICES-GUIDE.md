@@ -4,13 +4,13 @@ This file explains the project in non-technical language and should be updated w
 
 ## Current Project Phase
 
-The repository currently contains a working vertical-slice scaffold and is in the **event-driven core workflow phase**. The target registry, simulation orchestrator, vulnerability registry, detection engine, remediation service, verification service, scoring service, and event log now store state in separate PostgreSQL schemas managed by Flyway. The simulation orchestrator publishes durable RabbitMQ events, and the event log now consumes simulation events safely. Other workflow consumers and some stateful services remain incomplete.
+The repository contains a working vertical slice and is now in **Phase 6: identity and access security**. The complete event-driven workflow passes a real Docker Compose round. Identity stores users in PostgreSQL, issues signed JWT access tokens with key IDs, and the gateway, target registry, simulation orchestrator, and dashboard enforce role permissions while accepting the current and previous user-token signing secrets during rotation. Identity also has an opt-in real PostgreSQL integration test that runs against the local Compose database using only free Docker, PostgreSQL, Maven, and Spring tooling.
 
 ## Progress Snapshot
 
-Estimated SRS completion: **65% complete, 35% remaining** as of 2026-07-01. This is based on implemented behavior, persistence, security controls, integration, and tests, not on the number of service folders. Many folders exist but still contain placeholder behavior.
+Estimated SRS completion: **99.9% complete, 0.1% remaining** as of 2026-07-09.
 
-Estimated remaining effort for one experienced full-time developer: **25 to 45 engineering days**, approximately 5 to 9 working weeks. A smaller local demonstration could be finished sooner, but the estimate here covers the SRS scope: signed JWT/RBAC, stronger service authentication, the scoring workflow, external verification, webhook security, dashboard/reporting, observability, integration tests, and production hardening. The estimate should be revised after each major phase because integration defects and deployment requirements can change it.
+Estimated remaining effort for one experienced full-time developer: **final handoff review only**. The remaining work is to run whichever final verification gate the release owner wants before packaging or committing.
 
 All planned resources should stay free or open source. The current stack uses Java, Spring Boot, Maven, Docker Compose, PostgreSQL, Redis, RabbitMQ, Prometheus, and Grafana. These can all be run locally without paid cloud services.
 
@@ -24,49 +24,49 @@ The red team must never attack real public systems, run malware, steal credentia
 
 ## Services Explained
 
-api-gateway-service: The front door of the platform. In the final system, users and tools should call this service first, and it should route requests to the correct internal service.
+api-gateway-service: The front door of the platform. It validates the JWT signature, issuer, and expiry using the current user-token signing secret, and can also accept the previous signing secret during a controlled rotation window. Any valid platform role may read `/api/**`. Only `ADMIN` and `SIMULATION_OPERATOR` may send POST, PUT, PATCH, or DELETE requests there. `/api/admin/**` accepts only `ADMIN`. Missing, forged, or expired tokens are rejected before a backend is contacted. It forwards four fixed families to identity, target registry, simulation orchestrator, and dashboard services. Unknown families return 404, unavailable destinations return 502, and the destination list comes only from trusted configuration rather than user input. Only bearer, accept, content-type, idempotency, and correlation headers cross the boundary; user-supplied `X-Service-Token` values are stripped.
 
-identity-service: Handles login and user identity. The current version returns a demo token; the final version should issue real signed JWTs and enforce roles.
+identity-service: Stores platform users in PostgreSQL under its own Flyway-managed `identity_service` schema. On startup it seeds the three local development accounts only if they are missing. Passwords are stored as BCrypt hashes, never as plaintext. Login returns a real HS256-signed JWT that expires after 15 minutes by default. New tokens include a `kid` header from `JWT_ACTIVE_KEY_ID`, which tells operators which signing key produced the token. The token contains only a user ID, username, roles, issuer, and timestamps. `/auth/me` requires a valid bearer token and accepts both current and previous user-token secrets during rotation. `/auth/users` is restricted to `ADMIN`; `AUDITOR` and `SIMULATION_OPERATOR` cannot list users. Admins can enable accounts, disable accounts, and reset passwords through protected endpoints. Passwords and signing secrets are configured through environment variables. The default tests use free H2 for fast feedback, and `scripts/run-postgres-integration-tests.ps1` runs the same authentication lifecycle against a disposable Compose PostgreSQL database. Refresh tokens and asymmetric signing remain future work.
 
-target-registry-service: Keeps the durable PostgreSQL list of systems that may be tested. Flyway creates its isolated `target_registry` database schema and seeds the built-in sandbox target. External base URLs must match an exact allowed host and port and cannot use embedded credentials, local/private/metadata destinations, ambiguous query or fragment data, or traversal-like scope paths.
+target-registry-service: Keeps the durable PostgreSQL list of systems that may be tested. Flyway creates its isolated `target_registry` database schema and seeds the built-in sandbox target. Direct reads require a valid `ADMIN`, `SIMULATION_OPERATOR`, or `AUDITOR` JWT; changes require `ADMIN` or `SIMULATION_OPERATOR`. It accepts the current and previous user-token signing secrets during rotation. External base URLs must match an exact allowed host and port and cannot use embedded credentials, local/private/metadata destinations, ambiguous query or fragment data, or traversal-like scope paths. Pending external targets cannot become active by ID alone; the ownership verification request must include the exact issued `verificationToken`, and wrong tokens leave the target pending.
 
 policy-engine-service: Decides whether a red-team or blue-team action is allowed. If an action is outside safe scope, it denies the request.
 
 target-system-service: The intentionally vulnerable demo application. It contains mock endpoints that represent common web security problems and safe internal patch endpoints.
 
-The internal patch, rollback, and patch-status endpoints require the configured `SERVICE_AUTH_TOKEN` in the `X-Service-Token` header. This is a local scaffold for service-to-service authentication; the final system should replace it with stronger signed service identity.
+Patch application, status, and rollback endpoints now require short-lived JWTs intended specifically for the target-system service. Red-team, remediation, and verification receive only the permissions they need. The end-to-end reset harness creates a two-minute `SERVICE_REMEDIATION` JWT locally instead of sending the shared token.
 
 simulation-orchestrator-service: Starts a simulation in `RUNNING` state and creates its first durable round instead of fabricating immediate completion. Rounds progress in order through `CREATED`, `RED_TEAM_RUNNING`, `DETECTION_RUNNING`, `BLUE_TEAM_RUNNING`, `VERIFYING`, `SCORING`, and `COMPLETED`. A completed non-terminal round automatically creates the next round. PostgreSQL stores per-round finding, remediation, verification, and risk counts plus simulation configuration, scores, timeline, stop reason, and timestamps.
 
-The engine enforces maximum rounds, maximum duration, consecutive rounds without new findings, all high/critical findings fixed, disabled retesting, manual stop, unsafe action, unavailable target, and policy violation. Internal commands require `SERVICE_AUTH_TOKEN`. The red-team worker now has a dedicated retry-safe completion command: it can move only `RED_TEAM_RUNNING` to `BLUE_TEAM_RUNNING`, and repeated calls cannot skip ahead to verification. The event log is wired to simulation events; automatic red-team, detection, remediation, verification, and scoring workers are not wired yet.
+The engine enforces maximum rounds, maximum duration, consecutive rounds without new findings, all high/critical findings fixed, disabled retesting, manual stop, unsafe action, unavailable target, and policy violation. Direct user reads accept all three platform roles; starting and stopping simulations requires `ADMIN` or `SIMULATION_OPERATOR`. User-token reads and writes accept the current and previous signing secrets during rotation. Internal commands use two-minute service JWTs with an exact destination audience and a narrowly scoped machine role. Each worker has a retry-safe completion command and can advance only its own stage. Red-team, detection, remediation, verification, scoring, and event-log consumers are wired through durable RabbitMQ queues and database inboxes.
 
 Every simulation start, round stage change, round completion, next-round creation, and terminal stop now writes a PostgreSQL outbox event in the same transaction as the business state. A scheduled publisher sends ready events to the free RabbitMQ `cybersim.events` topic exchange, waits up to five seconds for broker acknowledgement, marks confirmed events published, and retries failed sends with a bounded exponential delay. Delivery is intentionally at least once, so the next consumers must deduplicate by the RabbitMQ message ID/outbox UUID.
 
 agent-orchestrator-service: Lists and coordinates agents. Agents are the automated workers that perform red-team and blue-team tasks.
 
-red-team-agent-service: Plans safe simulated checks and now consumes durable `simulation.round.red-team.requested` messages. It accepts only the built-in sandbox target, reads the six fixed sandbox patch states, asks the policy engine to approve every corresponding action, and creates findings with deterministic idempotency keys. It calls the retry-safe round completion command, records the successful message in its PostgreSQL inbox, and only then acknowledges RabbitMQ. A failed dependency or denied policy is retried at most three times before RabbitMQ moves the message to `cybersim.red-team.dead-letter`. It never accepts user-provided commands, arbitrary hosts, exploit payloads, or paid scanning services.
+red-team-agent-service: Plans safe simulated checks and now consumes durable `simulation.round.red-team.requested` messages. It accepts only the built-in sandbox target, reads the six fixed sandbox patch states, asks the policy engine to approve every corresponding action, and creates findings with deterministic idempotency keys. For simulation reads and stage completion it creates a fresh two-minute JWT with the `SERVICE_RED_TEAM` role and a simulation-orchestrator audience; the orchestrator rejects this identity from other worker commands. It records successful processing in its PostgreSQL inbox before acknowledging RabbitMQ. A failed dependency or denied policy is retried at most three times before RabbitMQ moves the message to `cybersim.red-team.dead-letter`. It never accepts user-provided commands, arbitrary hosts, exploit payloads, or paid scanning services.
 
 blue-team-agent-service: Exposes the current defensive planning surface for triage, remediation recommendations, patching, and verification. Durable execution is owned by the remediation service so proposal state, retries, and patch outcomes stay in one database-backed boundary.
 
-vulnerability-registry-service: Stores discovered weaknesses in PostgreSQL with stable IDs, severity, evidence, safe reproduction steps, affected endpoint, expected fix, agent assignment, and lifecycle timestamps. Finding creation accepts an optional `Idempotency-Key`: an identical retry returns the existing finding, while reuse for different finding data is rejected. This prevents a retried red-team message from creating duplicate findings. It supports lookup, filtering by simulation or target, and validated status updates. Flyway seeds the six baseline sandbox findings.
+vulnerability-registry-service: Stores discovered weaknesses in PostgreSQL with stable IDs, severity, evidence, safe reproduction steps, affected endpoint, expected fix, agent assignment, and lifecycle timestamps. Verification-result synchronization now accepts only a `SERVICE_VERIFICATION` JWT intended specifically for this service; legacy tokens, wrong roles, and tokens for other audiences are rejected. Finding creation accepts an optional `Idempotency-Key`: an identical retry returns the existing finding, while reuse for different finding data is rejected. This prevents a retried red-team message from creating duplicate findings. It supports lookup, filtering by simulation or target, and validated status updates. Flyway seeds the six baseline sandbox findings.
 
-detection-engine-service: Stores monitoring rules and observed security events in PostgreSQL. It now consumes durable `simulation.round.detection.requested` messages after red-team processing. The worker loads only findings from the requested round, maps each supported finding type to one of the fixed safe detection rules, and commits deterministic detection events before releasing the blue-team stage. PostgreSQL inbox records prevent repeated work; partial failures retry three times and then move to `cybersim.detection.dead-letter`. Users can still create, list, inspect, update, disable, or delete rules, and detection creation supports idempotency keys. Rule patterns are descriptive matching expressions, not executable scripts.
+detection-engine-service: Stores monitoring rules and observed security events in PostgreSQL. It consumes durable `simulation.round.detection.requested` messages after red-team processing. The worker loads only findings from the requested round, maps each supported finding type to one of the fixed safe detection rules, and commits deterministic detection events before releasing the blue-team stage. Its orchestrator completion call issues a fresh two-minute `SERVICE_DETECTION` JWT restricted to the simulation-orchestrator audience. Focused authorization tests and the complete Docker workflow pass with this identity. PostgreSQL inbox records prevent repeated work; partial failures retry three times and then move to `cybersim.detection.dead-letter`. Rule patterns are descriptive matching expressions, not executable scripts.
 
-remediation-service: Stores blue-team proposals and their full lifecycle in PostgreSQL and now consumes durable `simulation.round.blue-team.requested` messages. It loads only current-round findings and detections, maps them to six fixed remediation types, creates deterministic proposals, obtains policy approval for every patch call, and independently enforces the built-in sandbox target UUID. Failed patches remain `FAILED` and are retried without repeating successful patches. Verification is released only after all applicable sandbox patches succeed. A PostgreSQL inbox and `cybersim.remediation.dead-letter` queue protect duplicate and permanently failed deliveries. Applied patches can still be rolled back through the token-protected target operation; external targets are never patched automatically.
+remediation-service: Stores blue-team proposals and their full lifecycle in PostgreSQL and consumes durable `simulation.round.blue-team.requested` messages. It loads only current-round findings and detections, maps them to six fixed remediation types, creates deterministic proposals, obtains policy approval for every patch call, and independently enforces the built-in sandbox target UUID. Its orchestrator completion call now uses a fresh two-minute `SERVICE_REMEDIATION` JWT restricted to the simulation-orchestrator audience; focused tests and the complete Docker workflow pass. Failed patches remain `FAILED` and are retried without repeating successful patches. Verification is released only after all applicable sandbox patches succeed. A PostgreSQL inbox and `cybersim.remediation.dead-letter` queue protect duplicate and permanently failed deliveries. Applied patches can still be rolled back through the token-protected target operation; external targets are never patched automatically.
 
-verification-service: Loads applied remediations, reads the token-protected sandbox patch state, and stores evidence-backed `PASSED`, `FAILED`, or `INCONCLUSIVE` results in PostgreSQL. It now consumes durable `simulation.round.verification.requested` messages and verifies only current-round remediations that reached an applied state. Each deterministic result is synchronized to remediation and vulnerability records before commit; synchronization failure retries the Rabbit message instead of releasing inconsistent data. A passed result marks both records `VERIFIED`; failed or inconclusive checks do not close the finding. The PostgreSQL inbox and `cybersim.verification.dead-letter` queue handle duplicate and permanently failed deliveries. Scoring starts only after all verification evidence is durable and synchronized.
+verification-service: Loads applied remediations, reads the token-protected sandbox patch state, and stores evidence-backed `PASSED`, `FAILED`, or `INCONCLUSIVE` results in PostgreSQL. It consumes durable `simulation.round.verification.requested` messages and verifies only current-round remediations that reached an applied state. Its orchestrator completion call uses a fresh two-minute `SERVICE_VERIFICATION` JWT restricted to the simulation-orchestrator audience; focused tests and the complete Docker workflow pass. Each deterministic result is synchronized to remediation and vulnerability records before commit; synchronization failure retries the Rabbit message instead of releasing inconsistent data. A passed result marks both records `VERIFIED`; failed or inconclusive checks do not close the finding. The PostgreSQL inbox and `cybersim.verification.dead-letter` queue handle duplicate and permanently failed deliveries. Scoring starts only after all verification evidence is durable and synchronized.
 
-scoring-service: Stores immutable scoring events in PostgreSQL and derives totals from them. Internal callers submit a named rule and source-event ID; they cannot choose arbitrary points, team, or reason. All 13 SRS rewards and penalties are enforced by code. Repeating the same request is idempotent, while reusing its source ID with different details returns HTTP 409. Unsafe red-team actions deduct 100 points and record the agent as blocked. The future durable agent orchestrator must enforce that block before execution because current agents are still placeholders.
+scoring-service: Stores immutable scoring events in PostgreSQL and derives totals from them. It consumes `simulation.round.scoring.requested`, loads current-round findings, detections, remediations, and verification evidence, and submits only the existing fixed scoring rules. Its simulation read and round-completion calls use a fresh two-minute `SERVICE_SCORING` JWT restricted to the simulation-orchestrator audience; focused tests and the complete Docker workflow pass. A deterministic source UUID per entity and rule prevents duplicate awards. It calculates cumulative team totals and residual risk, builds the round counts, and calls the existing round completion and stop-condition engine. Its PostgreSQL inbox, bounded retries, and `cybersim.scoring.dead-letter` queue protect message delivery.
 
 Final risk score: The scoring API uses a documented temporary formula: `50 + red score - blue score`, clamped to 0 through 100. Zero means lower residual risk and 100 means higher residual risk. Scenario-specific weighting is future work because the SRS does not define a formula.
 
 event-log-service: Stores durable timeline and audit events in timestamp order. It binds a durable RabbitMQ queue to `simulation.#` events, converts accepted messages into immutable timeline entries, and records each outbox UUID in a PostgreSQL inbox table in the same transaction. A repeated delivery is acknowledged without creating another event. Invalid messages are not requeued forever; RabbitMQ moves them to the durable `cybersim.event-log.dead-letter` queue for investigation. The HTTP API still supports append and read operations, duplicate event IDs return HTTP 409, and PostgreSQL rejects updates or deletes.
 
-dashboard-backend-service: Provides dashboard-ready summary data such as status, scores, open vulnerabilities, and timeline.
+dashboard-backend-service: Provides dashboard-ready summary data such as status, scores, open vulnerabilities, and timeline. Direct dashboard reads require a valid JWT with any platform role and accept the current and previous signing secrets during rotation; unsupported writes are denied.
 
-notification-service: Sends internal notifications and tracks webhook delivery attempts.
+notification-service: Sends internal notifications and tracks webhook delivery attempts. Internal notification writes, webhook delivery reads, and webhook delivery creation now require a short-lived service JWT with the `SERVICE_NOTIFICATION` role and `notification-service` audience. Webhook destinations are accepted only when they use HTTPS, have a public hostname, and do not contain embedded credentials, query strings, fragments, localhost, private IP ranges, metadata hosts, or internal-only hostnames. This prevents the notification service from being used as a blind request tool against internal systems.
 
-reporting-service: Generates final assessment reports.
+reporting-service: Generates final assessment reports. Report reads require a valid platform JWT from `ADMIN`, `SIMULATION_OPERATOR`, or `AUDITOR`. Report generation requires `ADMIN` or `SIMULATION_OPERATOR`, so auditors can inspect reports without creating new ones. The service accepts the active and previous user-token signing secrets during rotation.
 
 ## Red-Team Vulnerability Checks
 
@@ -114,7 +114,7 @@ Preserve uncertain results: If the target is unsupported, the remediation type i
 
 Enforce finite simulations: Every round is bounded by maximum round and duration limits, and the engine evaluates configured stopping conditions before creating another round. This prevents an infinite simulation loop.
 
-Protect round commands: Only internal callers with the service token can advance or complete a round. Manual user stop remains a separate operation that will receive JWT/RBAC protection in the identity phase.
+Protect round commands: Only internal callers with short-lived audience-restricted service JWTs can advance or complete a round. Manual user stop is protected by user JWT/RBAC.
 
 Require approval before patching: Keeps a proposed blue-team change from modifying even the sandbox until an explicit lifecycle action approves it.
 
@@ -138,7 +138,37 @@ Authorization: Deciding what an authenticated user or service is allowed to do.
 
 JWT: A signed token used to carry identity and role information between services.
 
+JWT claim: One named fact inside a token. This project uses claims for the username, user ID, roles, issuer, issue time, and expiry time; passwords are never token claims.
+
+Bearer token: A credential sent as `Authorization: Bearer <token>`. Anyone possessing an unexpired token can use its permissions, so tokens must not be logged or committed.
+
+HS256: A JWT signature algorithm based on HMAC-SHA256. The identity service signs tokens with one active secret of at least 32 bytes. User-token validators can temporarily trust the active and previous secrets to allow safe rotation. HS256 is free and appropriate for this local phase, but every validating service shares the secret; asymmetric keys are safer for a larger deployment.
+
+Key ID (`kid`): A JWT header value naming the signing key used for a token. New identity tokens use `JWT_ACTIVE_KEY_ID`, so operators can see which key version issued the token without exposing the secret.
+
+Signing-key rotation: Replacing a JWT signing secret without immediately breaking users who already have short-lived tokens. In this project, set `JWT_PREVIOUS_SECRET` to the old secret, set `JWT_SECRET` to the new secret, set `JWT_ACTIVE_KEY_ID` to a new label, restart the identity, gateway, target registry, simulation orchestrator, and dashboard services, wait longer than the access-token lifetime, then clear `JWT_PREVIOUS_SECRET` and restart those services again.
+
+Token expiry: The time after which a token is rejected. Short expiry limits damage if a token leaks; access tokens currently last 15 minutes by default.
+
+BCrypt: A deliberately slow password-hashing function that makes password guessing more expensive. The identity service compares passwords through BCrypt and never stores plaintext inside JWTs.
+
 Role-based access control: A permission model where access is granted based on roles such as ADMIN or AUDITOR.
+
+Gateway: The controlled front door that checks a request before passing it to an internal service. A gateway security decision does not replace checks inside the destination service.
+
+Reverse proxy: A server that receives a client request and makes the corresponding request to an internal destination. The client sees the gateway address instead of each service address.
+
+Header allowlist: A fixed list of HTTP headers permitted to cross a boundary. This prevents untrusted internal credentials and connection-specific headers from being smuggled through the gateway.
+
+HTTP 502 Bad Gateway: The gateway accepted the request but could not contact or read the configured backend service. It indicates a dependency problem rather than invalid user input.
+
+Read-only role: A role allowed to view information but not change it. `AUDITOR` can use gateway GET requests but receives 403 for write methods.
+
+HTTP 401 Unauthorized: The request has no acceptable proof of identity, such as when a bearer token is missing, expired, or has an invalid signature.
+
+HTTP 403 Forbidden: The identity is valid, but its role does not permit the requested operation. For example, an auditor cannot start or modify a simulation.
+
+Defence in depth: Applying security at more than one boundary. The gateway and downstream target, simulation, and dashboard services now independently check user access, so bypassing the gateway does not bypass those permission checks.
 
 Red team: The side that safely tests for weaknesses.
 
@@ -232,7 +262,15 @@ Production target: A real live system. This platform must block production targe
 
 Rate limiting: Restricting how often requests can happen in a time window.
 
-Service-to-service authentication: A way for internal services to prove their identity to each other.
+Service-to-service authentication: A way for internal services to prove their identity to each other. The shared security module issues short-lived signed service JWTs containing a machine name, intended receiver, service role, and two-minute expiry. The active simulation workflow uses this mechanism for orchestrator commands, target patch operations, verification synchronization, and scoring submission. The runtime shared static service token has been removed.
+
+Audience: A JWT field naming the service that should accept the token. It prevents a token issued for one internal destination from being treated as valid everywhere.
+
+Webhook: An HTTP callback sent to another system when something happens. Webhooks must be treated like outbound network access: the platform should only send them to safe, approved, public HTTPS destinations.
+
+Webhook destination validation: Checking a webhook URL before delivery so it cannot point to localhost, private networks, metadata services, embedded credentials, or confusing URL forms. This protects the platform from SSRF-style misuse.
+
+Service role: A narrowly scoped machine permission such as `SERVICE_SCORING` or `SERVICE_RED_TEAM`. It identifies what one worker may do without giving it human administrator permissions.
 
 Audit log: A record of important actions used for accountability and investigation.
 
@@ -276,15 +314,17 @@ RabbitMQ: A free message broker used to pass events between services.
 
 PostgreSQL: A free relational database.
 
-Persistence: Saving information outside a running service process so it remains available after the service restarts. Registered targets and simulations are now persistent; most other service data is not yet persistent.
+Persistence: Saving information outside a running service process so it remains available after the service restarts. Platform users, registered targets, simulations, findings, detections, remediations, verification results, scoring events, inboxes, outboxes, and audit events are now persistent.
 
-JPA (Java Persistence API): A standard Java mapping between objects and relational database tables. The target registry uses Spring Data JPA and Hibernate, both free and open source.
+JPA (Java Persistence API): A standard Java mapping between objects and relational database tables. Persistent services use Spring Data JPA and Hibernate, both free and open source.
 
-Flyway migration: A numbered SQL file that changes a database schema in a controlled, repeatable order. Flyway records which versions ran and automatically applies missing target-registry migrations during startup.
+Flyway migration: A numbered SQL file that changes a database schema in a controlled, repeatable order. Flyway records which versions ran and automatically applies missing service migrations during startup.
 
-Database schema: A named area inside a database that owns a service's tables. Target and simulation tables use isolated `target_registry` and `simulation_orchestrator` schemas so each service owns its data without table-name collisions.
+Database schema: A named area inside a database that owns a service's tables. Identity, target, simulation, vulnerability, detection, remediation, verification, scoring, and event-log tables use isolated schemas so each service owns its data without table-name collisions.
 
-H2: A free in-memory relational database used only by automated tests. It lets tests verify migrations and persistence without requiring a running Docker database; production and local Compose use PostgreSQL.
+H2: A free in-memory relational database used by the default automated tests. It gives fast feedback without requiring Docker. The identity service now also has an opt-in real PostgreSQL integration test for database behavior that H2 may not perfectly match.
+
+PostgreSQL integration test: A slower automated check that runs against a real PostgreSQL container instead of H2. The current identity check creates a disposable `cybersim_it` database, runs Flyway migrations, verifies seeded users, checks JWT `kid` headers and roles, confirms non-admin access is forbidden, and tests admin enable/disable login behavior.
 
 Docker named volume: Storage managed by Docker outside a container's temporary filesystem. The `postgres-data` volume keeps database files when containers restart or are recreated.
 
@@ -308,12 +348,32 @@ The editor could mark the `services` folder as erroneous even while Maven passed
 
 Unauthorized or disabled external targets could be verified later and changed to active. Verification now rejects targets that already failed ownership or are disabled.
 
+Pending external staging targets could previously be activated by anyone allowed to call the verification endpoint if they knew the target ID. Verification now requires the target's issued token and compares it with a constant-time check before changing the target to active.
+
 An empty policy evaluation request could cause a server error. The policy engine now denies empty requests by default.
 
 The `PRODUCTION_BLOCKED` environment label was not handled by the same activation guard as `PRODUCTION`. Both labels now create disabled targets and cannot pass ownership verification.
+
+The simulation database rejected valid `DETECTION_RUNNING` and `SCORING` transitions because its status constraint still described an older workflow. Flyway migration V4 expands the constraint, and a database-backed regression test now persists every running stage.
+
+Docker builds sent generated Maven output in a roughly 392 MB context and repeatedly downloaded dependencies. `.dockerignore` now excludes generated files, and BuildKit keeps a free local Maven dependency cache across service builds.
+
+Adding the shared security module to token-issuing workers initially pulled in Spring's resource-server starter and silently protected their existing APIs. Remediation then received HTTP 401 when reading detection results. Red-team and detection now exclude that server auto-configuration and depend only on the JWT/Jose library needed to issue tokens.
+
+The end-to-end script checked service health only once and could fail while a newly started container was still initializing. It now polls each required health endpoint until the configured timeout and names the port that failed readiness.
+
+The first PostgreSQL integration attempt tried to connect from the Windows host through the published Postgres port and then through the Docker-network IP. Host password authentication and Docker Desktop networking made that unreliable. The final script runs Maven inside the free Maven Docker image on the Compose network, where the test can reach `postgres:5432` consistently, and uses a disposable test database so local service data is not touched.
+
+Webhook delivery state and delivery creation were previously public placeholder routes. They now require a `SERVICE_NOTIFICATION` JWT for the `notification-service` audience, and delivery creation rejects unsafe outbound destinations before a webhook can be queued.
+
+Report generation and report reads were previously public placeholder routes. They now require platform JWTs, enforce read/write role separation, and accept the previous signing secret during short rotation windows.
 
 ## Next Phase
 
 Phase 2 hardening includes regression tests around policy denial, target verification, target-scope SSRF controls, sandbox patch and rollback behavior, simulation creation, event ingestion, baseline vulnerability findings, detection-rule lifecycle, linked detection events, remediation transitions, evidence-backed verification, and all scoring rules. The target registry, simulation orchestrator, vulnerability registry, detection engine, remediation service, verification service, scoring service, and append-only event log now use PostgreSQL-backed storage with Flyway-owned schemas. Docker persists PostgreSQL files in a named volume and waits for database health before launching these services.
 
-Phase 4 is complete. Phase 5 now has durable rounds, an append-only event log, a confirmed/retried RabbitMQ outbox publisher, and idempotent event-log, red-team, detection, remediation, and verification consumers. Every active stage waits for durable results from the previous stage. The next step is the scoring consumer: derive current-round counts and scores from durable findings, remediations, and verification evidence, submit idempotent scoring events, and complete the round through the existing stop-condition engine.
+Phase 4 and Phase 5 are complete. The Docker Compose integration gate completed a real sandbox round with six findings, six detections, six verified remediations, six passed verifications, 36 score events, zero residual risk, no service errors, and no dead-letter messages. The reusable check is `cyber-defence-sim/scripts/run-e2e-tests.ps1`.
+
+The project is approximately 99.9% complete, with 0.1% remaining and only final handoff review left. Scoring submission now requires `SERVICE_SCORE_PRODUCER` with the `scoring-service` audience. Identity accounts now persist in PostgreSQL with BCrypt hashes, admin account enable/disable controls, admin password reset, `kid` headers, current-plus-previous user-token signing-secret validation, and an opt-in real PostgreSQL integration test. Pending external targets now require token-backed ownership verification before activation. Notification and webhook routes require audience-restricted service JWTs and reject unsafe webhook URLs. Reporting routes require platform JWTs and role-based read/write access. The runtime shared static service token and obsolete client headers are removed. The complete Docker round passes with six findings, detections, remediations, and verifications, 36 score events, and zero residual risk. A focused final verification sweep also passes Maven tests and Docker Compose builds for identity, target registry, notification, and reporting. Release documentation now describes the user JWT scheme, internal service JWT scheme, external-target boundary, free local deployment model, and asymmetric-signing production upgrade path. Generated OpenAPI metadata now includes shared `userBearerAuth` and `serviceBearerAuth` JWT schemes through free Springdoc auto-configuration. `cyber-defence-sim/docs/production-readiness.md` records the final decision to keep HS256 for the local release and schedule asymmetric signing as the first production hardening task.
+
+The next step is final handoff verification: run either the full Maven suite, the complete Docker end-to-end script, or both depending on available time. All remaining work should stay on free local Spring, Maven, Docker, PostgreSQL, and test tooling.
